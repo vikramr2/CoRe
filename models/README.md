@@ -1,7 +1,8 @@
-# Final models of the reported race studies
+# Final models of the reported studies
 
 The best run of each arm of the race-readout studies on the TD-STDP backbone (iteration 016 §20–21; the recipe in
-`docs/columns-recipe.md`), one `.npz` per arm, plus the scripts that reproduce, verify and run them.
+`docs/columns-recipe.md`) and of the Map-STDP study `emergent-v4` (model v4, the emergent rule on CartPole), one `.npz`
+per arm, plus the scripts that reproduce, verify and run the race models.
 
 **Every model is in `archive/models/`** (gitignored, 316 MB, to be kept on a server): all 320 race runs, one `.npz`
 per run in the same `<study>/<arm>/s<seed>.npz` layout, and a copy of the 240 emergent-v4 models. `reproduce.sh` writes
@@ -15,7 +16,7 @@ there; this directory keeps the copies of the best runs only.
 
 Each study's `README.md` in `reports/<study>/` is its pre-registration (arms, flags, settings and how they were chosen); `summary.md` and `pairs.csv` there are the reported tables.
 
-## Best run per arm (the files kept here)
+## Best run per arm of the race studies (the files kept here)
 
 Best = the highest last-100 return of the reported run (the policy the final weights encode), ties broken by the mean
 return over the whole run (all CartPole arms tie at 500), then the lower seed. Returns are from `reports/<study>/runs/`.
@@ -39,7 +40,40 @@ return over the whole run (all CartPole arms tie at 500), then the lower seed. R
 | `race-lunarlander` | `LunarLander_cols_on_race_e` | `s7208.npz` | 120.3 | 25.8 |
 | `race-lunarlander` | `LunarLander_cols_sealed_race_e` | `s7203.npz` | 131.6 | 27.9 |
 
-## What a model file holds (`save_ck_model`, `experiments/tdstdp.py`)
+## Best run per arm of `emergent-v4` (`emergent-v4/`)
+
+The 240 models of `emergent-v4` (four engines × map term on, off and sealed × seeds 2000–2019) are committed in
+`reports/emergent-v4/models/`, which `latent-ablation` reads; `emergent-v4/` here holds byte copies of the best one per
+arm. Best = the highest **frozen** return (the mean of the 20 end-of-run episodes the training run played with the final
+weights frozen, `frozen_returns` in `reports/emergent-v4/runs/`), because a v4 model is the final snapshot and its
+last-100 return was played while the weights still moved (one QIF run with last-100 293 scores 10 frozen). Ties (most
+flow runs at 500) are broken by the last-100 return, then the mean return over the run, then the lower seed. The
+picks hold on the 50 independent frozen episodes of `latent-ablation`'s intact condition, where each non-flow pick is
+first in its arm, except QIF sealed, where it is second.
+
+| Arm | Model | Frozen return | Last-100 return | Mean return |
+| --- | --- | --- | --- | --- |
+| `CartPole_branching_off` | `s2001.npz` | 469.3 | 155.3 | 102.0 |
+| `CartPole_branching_on` | `s2005.npz` | 471.2 | 229.3 | 210.4 |
+| `CartPole_branching_sealed` | `s2011.npz` | 461.9 | 347.4 | 180.6 |
+| `CartPole_flow_off` | `s2007.npz` | 500.0 | 500.0 | 418.1 |
+| `CartPole_flow_on` | `s2004.npz` | 500.0 | 500.0 | 455.6 |
+| `CartPole_flow_sealed` | `s2005.npz` | 500.0 | 500.0 | 464.5 |
+| `CartPole_lif_off` | `s2013.npz` | 335.0 | 318.4 | 196.0 |
+| `CartPole_lif_on` | `s2017.npz` | 466.4 | 428.1 | 281.8 |
+| `CartPole_lif_sealed` | `s2014.npz` | 448.6 | 440.0 | 281.4 |
+| `CartPole_qif_off` | `s2005.npz` | 235.3 | 312.8 | 120.2 |
+| `CartPole_qif_on` | `s2004.npz` | 269.6 | 211.7 | 162.1 |
+| `CartPole_qif_sealed` | `s2011.npz` | 242.2 | 222.0 | 191.7 |
+
+A v4 model holds `W_ep<k>` (the weight snapshots; the last is the final model), `mask`, `m`, `roles`, `config` and `u`.
+Run one with plasticity off through the ablation tool, which reads the final β from the training run's record:
+
+```bash
+python -m experiments.ablate --family v4 --model models/emergent-v4/CartPole_lif_on/s2017.npz --run reports/emergent-v4/runs/CartPole_lif_on/s2017.json --out X.json
+```
+
+## What a race model file holds (`save_ck_model`, `experiments/tdstdp.py`)
 
 - `W`: the final input→post weights (n_post × n_in, CK units: mV before the trace scaling), rows = critic E, critic I, then per action the actor E (and I) posts; `sign`: +1 / −1 per post.
 - `config`: the run's full `Config` as JSON after calibration, so `s_in`, `alpha_a`, `alpha_c`, `eta_c`, `eta_a` (after `--eta-cal`), `race_beta`, `race_theta`, `freeze`, `rate_floor`, `c_t` and the column flags are the values the run used; `n_in`, `n_ce`, `n_ci`, `n_ae`, `n_ai`, `K`, `n_lat`; `episodes_run`; `beta` (the race surrogate's gain at the end); `eta_sgd_mV`, `s_cal`, `rec_cal` (the calibration records).
@@ -58,4 +92,4 @@ python models/evaluate.py models/race-cartpole/CartPole_cols_sealed_race_rp/s700
 ## Not here
 
 - The softmax-readout studies (`hybrid-columns*`, `tdstdp-baseline*`) have no saved models; their reported tables are in `reports/`.
-- Map-STDP's own models (the emergent-walk v4 study) are in `reports/emergent-v4/models/`.
+- Every emergent-v4 model is in `reports/emergent-v4/models/` (committed) and `archive/models/emergent-v4/`.

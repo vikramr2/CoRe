@@ -38,7 +38,7 @@ Research question: can a spiking network's communities serve as its states, givi
     - `manifest.json`: git HEAD, the sha256 of the uncommitted code in `mapstdp/` and `experiments/` (saved as `code.patch`), versions, and the exact per-run commands;
     - `runs/<group>/s<seed>.json`: the raw results;
     - `summary.csv` and `summary.md`.
-  - `models/` holds the best run per arm of the race studies (`models/README.md`); `archive/models/` (gitignored, kept on a server) holds every saved model.
+  - `models/` holds the best run per arm of the race studies and of `emergent-v4` (`models/README.md`); `archive/models/` (gitignored, kept on a server) holds every saved model.
   - A study uses one code state. The runner refuses to resume if the code changed. Checkpoints and partials (`*.ckpt.npz`, `*.partial`) are gitignored.
 - Each `mapstdp` module has a `__main__` self-check (Eq. 1a bound, finite-difference gradient, Monte Carlo three-factor average, `W_snm` orientation). Extend it when you add a rule.
 
