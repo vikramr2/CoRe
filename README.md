@@ -12,6 +12,9 @@ Each spike is drawn with one sampled cause: an earlier spike that drove it (a wa
 noise. The flow engine has no spikes, so it shows walkers sampled from the walk it computes. Each model's page note
 states the rule for its engine and whether it is exact or an approximation.
 
+Hover over a neuron to draw only its own outgoing synapses; click to pin it. `index.html#<model id>@<neuron>` links
+to a pinned neuron.
+
 `data/` holds one JSON file per model plus `index.json`. The page loads them with `fetch`, so to view it locally,
 serve this folder over HTTP (`python -m http.server`) rather than opening the file directly.
 
