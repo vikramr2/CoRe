@@ -2,6 +2,10 @@
 
 ## 2026-10-31
 
+### Added: `README.md` (user request)
+
+- A short top-level README covering setup, how to run the trained models in `models/`, and how to train the v4 and TD-STDP race models (commands taken from the study manifests, and smoke-tested). The working branch `columns-tdstdp` is now `dev`.
+
 ### Added: `models/emergent-v4/`, the best v4 model per arm (user request)
 
 - 12 byte copies (628 KB) from `reports/emergent-v4/models/`, one per engine × arm. **Best = the highest frozen return** (20 end-of-run episodes with the final weights frozen), not last-100: a v4 model is the final snapshot, and its last-100 return was played while the weights still moved (QIF on: one run with last-100 293 scores 10 frozen). Ties go to last-100, then mean return, then the lower seed. The picks hold on `latent-ablation`'s 50 independent intact episodes, where each non-flow pick is first in its arm, except QIF sealed, where it is second; every flow pick plays at about 500. Table in `models/README.md`.
