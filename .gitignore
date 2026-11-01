@@ -484,3 +484,6 @@ reports/**/*.partial
 
 # Full model archive (every saved model; kept off git, to go on a server; models/ keeps the best per arm)
 archive/
+
+# The replay page lives on branch viz (GitHub Pages); experiments/m2_viz.py writes it here by default
+replay.html

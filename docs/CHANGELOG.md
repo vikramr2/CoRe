@@ -2,6 +2,11 @@
 
 ## 2026-10-31
 
+### Changed: the replay page moves to branch `viz` for GitHub Pages (user request)
+
+- New orphan branch `viz` holds only the page, as `index.html`, plus `.nojekyll` and a README. Once Pages is enabled on that branch, it is served at https://vikramr2.github.io/map-stdp/.
+- `replay.html` is removed from `dev` and gitignored. The generator `experiments/m2_viz.py` and its template stay on `dev`; `m2_viz page --seed 4 --la-beta 0.3` rebuilds the published page byte for byte.
+
 ### Added: `README.md` (user request)
 
 - A short top-level README covering setup, how to run the trained models in `models/`, and how to train the v4 and TD-STDP race models (commands taken from the study manifests, and smoke-tested). The working branch `columns-tdstdp` is now `dev`.
