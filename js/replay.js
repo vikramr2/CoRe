@@ -1,0 +1,470 @@
+// The walk replay page (index.html on branch viz): experiments/viz.py writes data/; this file is js/replay.js.
+(() => {
+  const $ = id => document.getElementById(id);
+  const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+  const TOKENS = ['--ink','--muted','--rule','--edge','--hop','--body','--accent','--track','--ground','--flame','--panel',
+                  '--stim','--lat1','--lat2','--critic','--act0','--act1','--act2','--act3'];
+  let C = {};
+  const ENV = {  // seconds per environment step, for the clock
+    CartPole: 0.02, Acrobot: 0.2, LunarLander: 0.02 };
+
+  // ---- state ----
+  let INDEX = [], D = null, N = 0, F = 0, K = 1, pos = [], members = [], col = [], rad = [], boxes = [];
+  let f = 0, t = 0, acc = 0, lastTs = null, speedFps = 5;
+  let playing = !matchMedia('(prefers-reduced-motion: reduce)').matches;
+  let glow, ring, level, hops = [], modCount, nWalk = 0, nCross = 0, nStim = 0, nBg = 0, fade = 4;
+  let staticLayer = null, staticKey = '';
+  let hover = -1, pinned = -1, outMax = 1, geo = null;  // the inspected neuron (pinned wins) and its synapse scale
+
+  const net = $('net'), plant = $('plant'), nx = net.getContext('2d'), px = plant.getContext('2d');
+  function fit(cv) { const r = cv.getBoundingClientRect(), d = devicePixelRatio || 1;
+    cv.width = Math.max(1, Math.round(r.width * d)); cv.height = Math.max(1, Math.round(r.height * d)); }
+  const readColors = () => { for (const v of TOKENS) C[v] = css(v); staticKey = ''; if (D) colorNeurons(); };
+  readColors();
+  matchMedia('(prefers-color-scheme: dark)').addEventListener('change', readColors);
+  new MutationObserver(readColors).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+  new ResizeObserver(() => { fit(net); fit(plant); staticKey = ''; }).observe(net);
+  new ResizeObserver(() => fit(plant)).observe(plant);
+
+  // ---- colours by module role ----
+  function modColor(k) {
+    const M = D.modules[k];
+    if (M.role === 'stim' || M.role === 'ctrl') return C['--stim'];
+    if (M.role === 'lat') return C[D.modules.slice(0, k).filter(x => x.role === 'lat').length % 2 ? '--lat2' : '--lat1'];
+    if (M.role === 'critic') return C['--critic'];
+    if (M.action != null) return C[`--act${M.action % 4}`];
+    return C['--critic'];
+  }
+  function colorNeurons() { col = D.m.map(k => modColor(k)); }
+
+  // ---- layout (unit box 1 × 11/16): inputs (or the controller) and the critic small at the top left; the action
+  // groups (an action's E with its I beside it) and the latents on a ring: a pair, a triangle, a square, ...
+  let RING = null;
+  function layout() {
+    const nMod = D.modules.length;
+    members = Array.from({ length: nMod }, () => []);
+    D.m.forEach((k, i) => members[k].push(i));
+    pos = new Array(N); boxes = new Array(nMod); rad = new Array(nMod);
+    const top = [], crit = [], acts = new Map(), lats = [];
+    D.modules.forEach((M, k) => {
+      if (M.role === 'stim' || M.role === 'ctrl') top.push(k);
+      else if (M.action != null) { if (!acts.has(M.action)) acts.set(M.action, []); acts.get(M.action).push(k); }
+      else if (M.role === 'lat') lats.push(k);
+      else crit.push(k);
+    });
+    const placeGrid = (k, x0, y0, w, h) => {
+      const [cols, rows] = D.modules[k].grid;
+      const cell = Math.min(w / cols, h / rows), gx = x0 + (w - cell * cols) / 2, gy = y0;
+      members[k].forEach((i, c) => { const cx = Math.floor(c / rows), cy = rows - 1 - (c % rows);
+        pos[i] = [gx + (cx + 0.5) * cell, gy + (cy + 0.5) * cell]; });
+      boxes[k] = [gx, gy, gx + cell * cols, gy + cell * rows]; rad[k] = Math.min(0.42 * cell, 0.009);
+    };
+    const placeCluster = (k, cx, cy, maxR) => {
+      const n = members[k].length, step = maxR / Math.sqrt(n + 0.5);
+      members[k].forEach((i, c) => { const a = c * 2.39996, r = step * Math.sqrt(c + 0.5);
+        pos[i] = [cx + r * Math.cos(a), cy + r * Math.sin(a)]; });
+      boxes[k] = [cx - maxR, cy - maxR, cx + maxR, cy + maxR]; rad[k] = Math.min(0.42 * step, 0.009);
+    };
+    // top left: the input grid(s), then the critic's populations side by side
+    let y = 0.05;
+    top.forEach(k => { if (D.modules[k].grid) { placeGrid(k, 0.06, y, 0.13, 0.15); y = boxes[k][3] + 0.08; }
+      else { placeCluster(k, 0.125, y + 0.06, 0.06); y += 0.2; } });
+    crit.forEach((k, q) => placeCluster(k, crit.length > 1 ? 0.075 + 0.1 * q : 0.125, y + 0.035, 0.035));
+    // the ring: actions first half, latents, actions second half (so the actions sit left and right)
+    const A = [...acts.keys()].sort((a, b) => a - b).map(a => acts.get(a)), h = Math.ceil(A.length / 2);
+    const groups = [...A.slice(0, h), ...lats.map(k => [k]), ...A.slice(h)], n = groups.length;
+    const cx = 0.64, cy = 0.355, R = n > 3 ? 0.22 : 0.2, rm = n > 4 ? 0.06 : n > 2 ? 0.07 : 0.09, ri = 0.045, gap = 0.045;
+    groups.forEach((ks, g) => {
+      const th = Math.PI / 2 + Math.PI / n + 2 * Math.PI * g / n, px = cx + R * Math.cos(th), py = cy + R * Math.sin(th);
+      if (ks.length === 1) { placeCluster(ks[0], px, py, rm); return; }
+      const w = 2 * rm + gap + 2 * ri;  // E on the left, its I to the right, the pair centred on the ring point
+      ks.forEach(k => D.modules[k].role === 'inh' ? placeCluster(k, px + w / 2 - ri, py, ri)
+                                                   : placeCluster(k, px - w / 2 + rm, py, rm));
+    });
+    RING = { cx, cy, R };
+  }
+
+  // ---- static layer: input bundles, synapses, module boxes, labels ----
+  function drawStatic(w, h, s, ox, oy) {
+    const key = `${w}x${h}|${D.id}`; if (key === staticKey && staticLayer) return;
+    staticKey = key;
+    staticLayer = document.createElement('canvas'); staticLayer.width = w; staticLayer.height = h;
+    const g = staticLayer.getContext('2d'), d = devicePixelRatio || 1;
+    const X = p => ox + p[0] * s, Y = p => oy + p[1] * s;
+    const mid = k => [(boxes[k][0] + boxes[k][2]) / 2, (boxes[k][1] + boxes[k][3]) / 2];
+    // input -> population links (race): one thin line per population, standing for its all-to-all input synapses
+    g.strokeStyle = C['--stim']; g.lineCap = 'round';
+    for (const [a, b] of D.bundles || []) {
+      const below = q => q[0] < boxes[a][2];  // the critic, under the inputs: leave from the bottom edge
+      const q = mid(b), p = below(q) ? [mid(a)[0], boxes[a][3]] : [boxes[a][2], mid(a)[1]];
+      g.globalAlpha = 0.45; g.lineWidth = 1.5 * d;
+      g.beginPath(); g.moveTo(X(p), Y(p));
+      if (below(q)) g.lineTo(X(q), Y(q)); else g.quadraticCurveTo(X([(p[0] + q[0]) / 2]), Y(p), X(q), Y(q));
+      g.stroke();
+    }
+    g.lineWidth = 0.6 * d; g.lineCap = 'butt';
+    for (const [i, j, wt] of D.edges) { if (pos[i] == null || pos[j] == null) continue;
+      g.globalAlpha = 0.06 + 0.4 * Math.sqrt(Math.max(0, wt)); g.strokeStyle = C['--edge'];
+      g.beginPath(); g.moveTo(X(pos[j]), Y(pos[j])); g.lineTo(X(pos[i]), Y(pos[i])); g.stroke(); }
+    g.globalAlpha = 1;
+    D.modules.forEach((M, k) => {
+      const [x0, y0, x1, y1] = boxes[k], pad = 8 * d;
+      g.fillStyle = C['--panel']; g.globalAlpha = 0.55; g.strokeStyle = C['--rule']; g.lineWidth = d;
+      g.beginPath(); g.roundRect(X([x0]) - pad, Y([0, y0]) - pad, (x1 - x0) * s + 2 * pad, (y1 - y0) * s + 2 * pad, 7 * d);
+      if (M.grid) g.fill();
+      g.globalAlpha = 1; g.stroke();
+      if (M.grid && M.grid_labels) {
+        g.fillStyle = C['--muted']; g.font = `${9 * d}px ${css('--mono')}`; g.textAlign = 'center';
+        g.fillText(`${M.grid_labels[0]} →`, X([(x0 + x1) / 2]), Y([0, y1]) + pad + 11 * d);
+        g.save(); g.translate(X([x0]) - pad - 5 * d, Y([0, (y0 + y1) / 2])); g.rotate(-Math.PI / 2);
+        g.fillText(`${M.grid_labels[1]} →`, 0, 0); g.restore();
+      }
+    });
+    // the critic sends no spikes to the actor, only its TD error to the actor's plasticity (off in the replay)
+    const cr = D.modules.map((M, k) => k).filter(k => D.modules[k].role === 'critic'
+      || (D.modules[k].role === 'inh' && D.modules[k].action == null));
+    if (cr.length) {
+      const yb = Math.max(...cr.map(k => boxes[k][3])), xl = Math.min(...cr.map(k => boxes[k][0]));
+      g.fillStyle = C['--muted']; g.font = `${9 * d}px ${css('--mono')}`; g.textAlign = 'left';
+      g.fillText('no synapses to the actor;', X([xl]) - 8 * d, Y([0, yb]) + 34 * d);
+      g.fillText('its TD error δ drives learning', X([xl]) - 8 * d, Y([0, yb]) + 46 * d); }
+    // the ring's centre: how much recurrent drive crosses between action columns
+    const t = D.family === 'race' ? (D.rec == null ? ['no recurrent synapses', '(feed-forward actor)']
+        : D.rec.cross === 0 ? ['recurrence within', 'columns only (sealed)']
+        : ['recurrent drive', `${(100 * D.rec.cross).toFixed(1)}% between columns`])
+      : D.rec == null ? null : D.rec.cross === 0 ? ['latents and actions:', 'output stays in module']
+        : ['latent and action output', `${(100 * D.rec.cross).toFixed(1)}% to other modules`];
+    if (t) {
+      g.font = `${10 * d}px ${css('--mono')}`; g.textAlign = 'center';
+      const tw = Math.max(...t.map(line => g.measureText(line).width)) + 12 * d;
+      g.fillStyle = C['--panel']; g.globalAlpha = 0.85;
+      g.fillRect(X([RING.cx]) - tw / 2, Y([0, RING.cy]) - 15 * d, tw, 31 * d); g.globalAlpha = 1;
+      g.fillStyle = C['--muted'];
+      t.forEach((line, q) => g.fillText(line, X([RING.cx]), Y([0, RING.cy]) + (q * 13 - 3) * d));
+    }
+  }
+
+  // ---- data loading ----
+  async function loadIndex() {
+    try {
+      const r = await fetch('data/index.json'); INDEX = (await r.json()).models;
+    } catch (e) {
+      $('status').textContent = 'Could not load data/index.json (serve this folder over http, e.g. python -m http.server).';
+      return;
+    }
+    const tasks = [...new Set(INDEX.map(m => m.task))];
+    const order = ['CartPole', 'Acrobot', 'LunarLander']; tasks.sort((a, b) => order.indexOf(a) - order.indexOf(b));
+    $('task').innerHTML = tasks.map(x => `<option>${x}</option>`).join('');
+    const [want, pin] = decodeURIComponent(location.hash.slice(1)).split('@');  // #<model id>[@<pinned neuron>]
+    const start = INDEX.find(m => m.id === want) || INDEX.find(m => m.id === pick(tasks[0]));
+    $('task').value = start.task; fillModels(start.task); $('model').value = start.id;
+    load(start.id, start.id === want && pin != null ? +pin : -1);
+  }
+  const DEFAULT = { CartPole: 'v4-cartpole-flow-on', Acrobot: 'race-acrobot-nlif-cols_sealed_race_h2',
+                    LunarLander: 'race-lunarlander-nlif-cols_lam0_race_e' };  // flow shows the walk; the best TD-STDP arms
+  const pick = task => (INDEX.find(m => m.id === DEFAULT[task]) || INDEX.find(m => m.task === task)).id;
+  function fillModels(task) {
+    const fams = { v4: 'Map-STDP model v4', race: 'TD-STDP backbone, race readout' };
+    const ms = INDEX.filter(m => m.task === task);
+    $('model').innerHTML = Object.keys(fams).map(fam => {
+      const xs = ms.filter(m => m.family === fam); if (!xs.length) return '';
+      return `<optgroup label="${fams[fam]}">${xs.map(m => `<option value="${m.id}">${m.label} (return ${Math.round(m.return)})</option>`).join('')}</optgroup>`;
+    }).join('');
+  }
+  async function load(id, pin = -1) {
+    const entry = INDEX.find(m => m.id === id); if (!entry) return;
+    $('status').textContent = 'loading…'; history.replaceState(null, '', `#${id}`);
+    const r = await fetch(`data/${entry.file}`); const data = await r.json();
+    if ($('model').value !== id) return;  // a newer choice superseded this load
+    D = data; N = D.m.length; F = D.frames.length; K = D.k; f = 0;
+    fade = Math.max(4, Math.round(K / 25));
+    for (const fr of D.frames) {  // spikes indexed by step
+      fr.at = Array.from({ length: K }, () => []);
+      for (const sp of fr.s) if (sp[0] >= 0 && sp[0] < K) fr.at[sp[0]].push(sp);
+    }
+    glow = new Float32Array(N); ring = new Float32Array(N); level = new Float32Array(N); modCount = new Float32Array(D.modules.length);
+    colorNeurons(); layout(); staticKey = ''; resetFrame();
+    hover = -1; pinned = pin >= 0 && pin < N ? pin : -1; outMax = Math.max(1e-12, ...Object.values(D.out || {}).flatMap(l => l.map(e => e[1]))); showSel();
+    $('scrub').max = F - 1; $('scrub').value = 0; $('status').textContent = '';
+    describe();
+  }
+
+  function describe() {
+    const tr = D.train || {}, bits = [];
+    if (tr.last100 != null) bits.push(`training last-100 return ${(+tr.last100).toFixed(0)}`);
+    if (tr.frozen != null) bits.push(`frozen ${(+tr.frozen).toFixed(0)}`);
+    $('subtitle').textContent = `${D.label} · seed ${D.seed} · ${bits.join(', ')}${bits.length ? ' · ' : ''}this episode: return ${(+D.return).toFixed(1)}, ${F} frames`;
+    $('netTitle').textContent = D.engine === 'flow' ? 'Flow: sampled walkers of the walk' : `Spiking network (${D.engine === 'nlif' ? 'noisy LIF' : D.engine === 'qif' ? 'QIF' : D.engine === 'lif' ? 'LIF' : 'branching'})`;
+    $('envTitle').textContent = { CartPole: 'CartPole-v1', Acrobot: 'Acrobot-v1', LunarLander: 'LunarLander-v3' }[D.task] || D.task;
+    $('note').textContent = D.note || '';
+    const sh = D.shares || {};
+    const pct = x => x == null ? '–' : `${(100 * x).toFixed(0)}%`;
+    $('explain').textContent = (D.engine === 'flow'
+      ? `Each line is one walker's hop; a ring is a restart at the stimulus.`
+      : `Each spike gets one sampled cause: an earlier spike that drove it (a walk step, drawn as a line), the stimulus (ring), or background noise (no marker). Over this episode: ${pct(sh.walk)} walk steps, ${pct(sh.stim)} stimulus, ${pct(sh.none)} background.`)
+      + (D.family === 'race'
+        ? ` Blue lines: the all-to-all input synapses (every input neuron onto every critic and actor neuron; hover over an input to see its strongest). Grey lines: the strongest recurrent synapses among the actor's E neurons, within and between columns.`
+        : ` Grey lines: the strongest synapses, within and between modules (T_ij = W_ij / d_j).`) + ` Weights are frozen for the replay.`;
+    const L = [];
+    const seen = new Set();
+    let inhAct = false;
+    D.modules.forEach((M, k) => { const key = M.role + (M.action ?? '') + (M.role === 'lat' ? k : '');
+      if (seen.has(key)) return; seen.add(key);
+      if (M.role === 'inh' && M.action != null) { inhAct = true; return; }
+      const name = M.action != null ? `action: ${D.actions[M.action]}${M.role === 'inh' ? ' (inhibitory)' : ''}` : M.name;
+      L.push(`<span><i style="background:${modColor(k)}"></i>${name}</span>`); });
+    if (inhAct) L.push(`<span>inh.: the inhibitory neurons of the action beside them</span>`);
+    if (D.bundles) L.push(`<span><i class="a2a"></i>all-to-all: every input neuron synapses onto every neuron of the population</span>`);
+    L.push(`<span><i class="hop"></i>walk step: the earlier spike that caused this one</span>`);
+    L.push(`<span><i class="inp"></i>caused by the stimulus${D.engine === 'flow' ? ' (restart)' : ''}</span>`);
+    if (D.engine !== 'flow' && D.engine !== 'branching') L.push(`<span><i class="bg"></i>plain: background</span>`);
+    $('legend').innerHTML = L.join('');
+    envReadout();
+  }
+
+  // ---- playback ----
+  function resetFrame() {
+    t = 0; glow.fill(0); ring.fill(0); hops.length = 0; modCount.fill(0); nWalk = nCross = nStim = nBg = 0; level.fill(0);
+    // race inputs: spike counts per window (no causes to draw), shown as a steady level through the frame
+    for (const [n, c] of D.frames[f].inp || []) { level[n] = Math.min(1, c / (D.inp_max || 1)); modCount[D.m[n]] += c; }
+  }
+  function stepOnce() {
+    const fr = D.frames[f];
+    for (let i = 0; i < N; i++) { glow[i] *= 0.72; ring[i] *= 0.72; }
+    for (const h of hops) h[2]++;
+    while (hops.length && hops[0][2] > fade) hops.shift();
+    for (const [, n, c] of fr.at[t]) {
+      glow[n] = 1; modCount[D.m[n]]++;
+      if (c >= 0) { hops.push([c, n, 0]); nWalk++; if (D.m[c] !== D.m[n]) nCross++; }
+      else if (c === -1) { ring[n] = 1; nStim++; }
+      else nBg++;
+    }
+    t++;
+    if (t >= K) { f = (f + 1) % F; resetFrame(); $('scrub').value = f; }
+  }
+
+  function drawNet() {
+    const w = net.width, h = net.height, d = devicePixelRatio || 1;
+    const s = Math.min(w, h * 16 / 11), ox = (w - s) / 2, oy = (h - s * 11 / 16) / 2;
+    const X = p => ox + p[0] * s, Y = p => oy + p[1] * s;
+    geo = { s, ox, oy };
+    drawStatic(w, h, s, ox, oy);
+    nx.clearRect(0, 0, w, h); nx.drawImage(staticLayer, 0, 0);
+    const fr = D.frames[f], decided = fr.dec >= 0 && t > fr.dec;
+    // module labels and counts
+    nx.textAlign = 'center';
+    D.modules.forEach((M, k) => {
+      const [x0, y0, x1, y1] = boxes[k], pad = 8 * d;
+      const won = M.action === fr.a && M.role !== 'inh' && (decided || D.engine === 'flow');
+      if (won) { nx.strokeStyle = modColor(k); nx.lineWidth = 2.5 * d;
+        nx.beginPath(); nx.roundRect(X([x0]) - pad, Y([0, y0]) - pad, (x1 - x0) * s + 2 * pad, (y1 - y0) * s + 2 * pad, 7 * d); nx.stroke(); }
+      const name = M.action != null && M.role !== 'inh' ? D.actions[M.action] : M.role === 'inh' ? 'inh.' : M.name;
+      nx.fillStyle = won ? modColor(k) : C['--muted']; nx.font = `${11 * d}px ${css('--display')}`;
+      nx.fillText(name + (won && D.engine !== 'flow' ? '  ✓' : ''), X([(x0 + x1) / 2]), Y([0, y0]) - pad - 4 * d);
+      nx.font = `${10 * d}px ${css('--mono')}`; nx.fillStyle = C['--muted'];
+      if (!(M.grid && M.grid_labels)) nx.fillText(`${modCount[k]}`, X([(x0 + x1) / 2]), Y([0, y1]) + pad + 12 * d);
+    });
+    // walk steps
+    nx.strokeStyle = C['--hop'];
+    for (const [j, i, age] of hops) { nx.globalAlpha = Math.max(0, 1 - age / fade); nx.lineWidth = (2.2 - 1.4 * age / fade) * d;
+      nx.beginPath(); nx.moveTo(X(pos[j]), Y(pos[j])); nx.lineTo(X(pos[i]), Y(pos[i])); nx.stroke(); }
+    nx.globalAlpha = 1;
+    // the inspected neuron's outgoing synapses (dims everything else)
+    const q = pinned >= 0 ? pinned : hover, tgt = new Set();
+    if (q >= 0) {
+      nx.fillStyle = C['--panel']; nx.globalAlpha = 0.7; nx.fillRect(0, 0, w, h);
+      nx.strokeStyle = col[q]; nx.lineCap = 'round';
+      for (const [i, wt] of (D.out && D.out[q]) || []) { tgt.add(i);
+        nx.globalAlpha = 0.35 + 0.55 * Math.sqrt(wt / outMax); nx.lineWidth = (0.6 + 4.5 * wt / outMax) * d;
+        nx.beginPath(); nx.moveTo(X(pos[q]), Y(pos[q])); nx.lineTo(X(pos[i]), Y(pos[i])); nx.stroke(); }
+      nx.globalAlpha = 1; nx.lineCap = 'butt';
+    }
+    // neurons
+    for (let n = 0; n < N; n++) {
+      const k = D.m[n], gl = Math.max(glow[n], 0.8 * level[n]), r0 = rad[k] * s;
+      const r = r0 * (1 + (D.modules[k].grid && D.modules[k].grid[0] * D.modules[k].grid[1] > 64 ? 0.35 : 1.1) * gl);
+      nx.beginPath(); nx.arc(X(pos[n]), Y(pos[n]), r, 0, 6.2832);
+      nx.globalAlpha = 0.24 + 0.76 * gl; nx.fillStyle = col[n]; nx.fill();
+      if (ring[n] > 0.05) { nx.globalAlpha = ring[n]; nx.strokeStyle = C['--ink']; nx.lineWidth = 1.4 * d;
+        nx.beginPath(); nx.arc(X(pos[n]), Y(pos[n]), r + 2.5 * d, 0, 6.2832); nx.stroke(); }
+      if (n === q || tgt.has(n)) { nx.globalAlpha = 1; nx.strokeStyle = n === q ? C['--ink'] : col[q]; nx.lineWidth = (n === q ? 2 : 1.2) * d;
+        nx.beginPath(); nx.arc(X(pos[n]), Y(pos[n]), Math.max(r, 3 * d) + 1.5 * d, 0, 6.2832); nx.stroke(); }
+    }
+    nx.globalAlpha = 1;
+    const unit = D.engine === 'flow' ? 'hop' : 'step';
+    $('stepLabel').textContent = `${unit} ${t} / ${K}${D.dt_ms && D.engine !== 'flow' && D.engine !== 'branching' ? ` (${(t * D.dt_ms).toFixed(1)} ms)` : ''}${t < D.burn ? ' · burn-in' : ''}`;
+    $('rw').textContent = `${nWalk}`;
+    $('rx2').textContent = `${nCross} (${nWalk ? (100 * nCross / nWalk).toFixed(0) : 0}%)`;
+    $('rs').textContent = `${nStim}`; $('rb').textContent = D.engine === 'flow' || D.engine === 'branching' ? '–' : `${nBg}`;
+  }
+
+  // ---- environments ----
+  const lerp = (a, b, u) => a + (b - a) * u;
+  const angLerp = (a, b, u) => { let dd = b - a; while (dd > Math.PI) dd -= 2 * Math.PI; while (dd < -Math.PI) dd += 2 * Math.PI; return a + dd * u; };
+  function envReadout() {
+    const rows = { CartPole: [['Cart x', 'ex'], ['Pole θ', 'eth']], Acrobot: [['Tip height', 'ey'], ['θ1, θ2', 'eth']],
+                   LunarLander: [['Position', 'ex'], ['Angle', 'eth'], ['Legs down', 'ey']] }[D.task] || [];
+    rows.push(['Action', 'ea']);
+    $('envReadout').innerHTML = rows.map(([l, id]) => `<div><span>${l}</span><span id="${id}"></span></div>`).join('');
+  }
+  function actionText(fr) {
+    const decided = fr.dec >= 0 && t > fr.dec;
+    if (D.engine === 'flow' || decided) return D.actions[fr.a];
+    if (t < D.burn) return 'burn-in';
+    return fr.dec < 0 && D.family === 'race' ? `${D.actions[fr.a]} (held)` : 'racing…';
+  }
+
+  function drawCartPole(fr, nxt, u, w, h, d) {
+    const x = lerp(fr.obs[0], nxt.obs[0], u), th = lerp(fr.obs[2], nxt.obs[2], u);
+    const sx = w / 5.6, cx = w / 2 + x * sx, ty = h * 0.72;
+    px.strokeStyle = C['--track']; px.lineWidth = 2 * d;
+    px.beginPath(); px.moveTo(w / 2 - 2.4 * sx, ty); px.lineTo(w / 2 + 2.4 * sx, ty); px.stroke();
+    px.fillStyle = C['--muted']; px.font = `${10 * d}px ${css('--mono')}`; px.textAlign = 'center';
+    for (const v of [-2.4, 0, 2.4]) { px.fillRect(w / 2 + v * sx - d, ty - 5 * d, 2 * d, 10 * d); px.fillText(v.toFixed(1), w / 2 + v * sx, ty + 20 * d); }
+    const L = 1.5 * sx;
+    px.globalAlpha = 0.12; px.fillStyle = C['--accent']; px.beginPath(); px.moveTo(cx, ty - 14 * d);
+    px.arc(cx, ty - 14 * d, L, -Math.PI / 2 - 0.2094, -Math.PI / 2 + 0.2094); px.closePath(); px.fill(); px.globalAlpha = 1;
+    px.fillStyle = C['--body']; px.beginPath(); px.roundRect(cx - 34 * d, ty - 24 * d, 68 * d, 20 * d, 4 * d); px.fill();
+    px.strokeStyle = C['--accent']; px.lineWidth = 7 * d; px.lineCap = 'round';
+    px.beginPath(); px.moveTo(cx, ty - 14 * d); px.lineTo(cx + L * Math.sin(th), ty - 14 * d - L * Math.cos(th)); px.stroke();
+    px.fillStyle = C['--panel']; px.beginPath(); px.arc(cx, ty - 14 * d, 3.5 * d, 0, 6.2832); px.fill();
+    if (D.engine === 'flow' || (fr.dec >= 0 && t > fr.dec) || (D.family === 'race' && fr.dec < 0)) {
+      const dir = fr.a ? 1 : -1, ax = cx + dir * 44 * d;
+      px.strokeStyle = C[`--act${fr.a}`]; px.fillStyle = px.strokeStyle; px.lineWidth = 3 * d;
+      px.beginPath(); px.moveTo(ax, ty - 14 * d); px.lineTo(ax + dir * 26 * d, ty - 14 * d); px.stroke();
+      px.beginPath(); px.moveTo(ax + dir * 34 * d, ty - 14 * d); px.lineTo(ax + dir * 24 * d, ty - 20 * d); px.lineTo(ax + dir * 24 * d, ty - 8 * d); px.fill();
+    }
+    $('ex').textContent = `${x >= 0 ? ' ' : ''}${x.toFixed(3)} m`;
+    $('eth').textContent = `${th >= 0 ? ' ' : ''}${(th * 180 / Math.PI).toFixed(2)}°`;
+  }
+
+  function drawAcrobot(fr, nxt, u, w, h, d) {
+    const a1 = angLerp(Math.atan2(fr.obs[1], fr.obs[0]), Math.atan2(nxt.obs[1], nxt.obs[0]), u);
+    const a2 = angLerp(Math.atan2(fr.obs[3], fr.obs[2]), Math.atan2(nxt.obs[3], nxt.obs[2]), u);
+    const sc = Math.min(w, h) / 4.8, ox = w / 2, oy = h / 2;
+    const P = (x, y) => [ox + x * sc, oy - y * sc];
+    const p1 = [Math.sin(a1), -Math.cos(a1)], p2 = [p1[0] + Math.sin(a1 + a2), p1[1] - Math.cos(a1 + a2)];
+    // goal line: the tip must rise above height 1
+    px.strokeStyle = C['--track']; px.setLineDash([6 * d, 5 * d]); px.lineWidth = 1.5 * d;
+    px.beginPath(); px.moveTo(...P(-2.2, 1)); px.lineTo(...P(2.2, 1)); px.stroke(); px.setLineDash([]);
+    px.fillStyle = C['--muted']; px.font = `${10 * d}px ${css('--mono')}`; px.textAlign = 'left';
+    px.fillText('goal', ...P(1.55, 1.08));
+    px.lineCap = 'round';
+    px.strokeStyle = C['--body']; px.lineWidth = 8 * d; px.beginPath(); px.moveTo(...P(0, 0)); px.lineTo(...P(...p1)); px.stroke();
+    px.strokeStyle = C['--accent']; px.beginPath(); px.moveTo(...P(...p1)); px.lineTo(...P(...p2)); px.stroke();
+    for (const q of [[0, 0], p1]) { px.fillStyle = C['--panel']; px.beginPath(); px.arc(...P(...q), 4 * d, 0, 6.2832); px.fill(); }
+    // torque on the second joint
+    const tq = fr.a - 1, show = D.engine === 'flow' || (fr.dec >= 0 && t > fr.dec) || (D.family === 'race' && fr.dec < 0);
+    if (show && tq !== 0) {
+      const [jx, jy] = P(...p1), r = 18 * d, a0 = -Math.PI * 0.8, a1e = -Math.PI * 0.2;
+      px.strokeStyle = C[`--act${fr.a}`]; px.fillStyle = px.strokeStyle; px.lineWidth = 2.5 * d;
+      px.beginPath(); px.arc(jx, jy, r, a0, a1e); px.stroke();
+      const ae = tq > 0 ? a0 : a1e, hx = jx + r * Math.cos(ae), hy = jy + r * Math.sin(ae), sg = tq > 0 ? -1 : 1;
+      px.beginPath(); px.moveTo(hx + sg * 6 * d, hy - 2 * d); px.lineTo(hx - 2 * d, hy - 7 * d); px.lineTo(hx - 3 * d, hy + 5 * d); px.fill();
+    }
+    $('ey').textContent = `${(-Math.cos(a1) - Math.cos(a1 + a2)).toFixed(2)} (goal 1)`;
+    $('eth').textContent = `${(a1 * 180 / Math.PI).toFixed(0)}°, ${(a2 * 180 / Math.PI).toFixed(0)}°`;
+  }
+
+  const LANDER = [[-14, 17], [-17, 0], [-17, -10], [17, -10], [17, 0], [14, 17]].map(([x, y]) => [x / 30, y / 30]);
+  function drawLunar(fr, nxt, u, w, h, d) {
+    const E = D.env || {}, WW = E.W || 20, HH = E.H || 13.333, sc = Math.min(w / WW, h / HH);
+    const ox = (w - WW * sc) / 2, oy = (h + HH * sc) / 2;
+    const P = (x, y) => [ox + x * sc, oy - y * sc];
+    if (E.terrain) { px.fillStyle = C['--ground']; px.beginPath(); px.moveTo(...P(0, 0));
+      for (const [x, y] of E.terrain) px.lineTo(...P(x, y)); px.lineTo(...P(WW, 0)); px.closePath(); px.fill(); }
+    if (E.helipad) { const [x1, x2, y] = E.helipad;
+      for (const x of [x1, x2]) { px.strokeStyle = C['--muted']; px.lineWidth = 1.5 * d;
+        px.beginPath(); px.moveTo(...P(x, y)); px.lineTo(...P(x, y + 1.6)); px.stroke();
+        px.fillStyle = C['--accent']; px.beginPath(); px.moveTo(...P(x, y + 1.6)); px.lineTo(...P(x, y + 1.1)); px.lineTo(...P(x + 0.8, y + 1.35)); px.fill(); } }
+    const a = fr.pose, b = nxt.pose || a;
+    if (!a) return;
+    const x = lerp(a.x, b.x, u), y = lerp(a.y, b.y, u), ang = angLerp(a.ang, b.ang, u);
+    const rot = (q, A, cx, cy) => [cx + q[0] * Math.cos(A) - q[1] * Math.sin(A), cy + q[0] * Math.sin(A) + q[1] * Math.cos(A)];
+    // legs
+    (a.legs || []).forEach((lg, i) => {
+      const lb = (b.legs || a.legs)[i], lx = lerp(lg[0], lb[0], u), ly = lerp(lg[1], lb[1], u), la = angLerp(lg[2], lb[2], u);
+      const q = [[-2 / 30, -8 / 30], [2 / 30, -8 / 30], [2 / 30, 8 / 30], [-2 / 30, 8 / 30]].map(p => rot(p, la, lx, ly));
+      px.fillStyle = a.contact && a.contact[i] ? C['--act1'] : C['--muted'];
+      px.beginPath(); q.forEach((p, k) => k ? px.lineTo(...P(...p)) : px.moveTo(...P(...p))); px.closePath(); px.fill();
+    });
+    // engine flames (the action in force)
+    const show = (fr.dec >= 0 && t > fr.dec) || (D.family === 'race' && fr.dec < 0) || D.engine === 'flow';
+    if (show && fr.a) {
+      px.fillStyle = C['--flame'];
+      const flame = (base, dir, len) => { const tip = [base[0] + dir[0] * len, base[1] + dir[1] * len], nrm = [-dir[1] * 0.12, dir[0] * 0.12];
+        px.beginPath(); px.moveTo(...P(base[0] + nrm[0], base[1] + nrm[1])); px.lineTo(...P(...tip)); px.lineTo(...P(base[0] - nrm[0], base[1] - nrm[1])); px.fill(); };
+      const R = q => rot(q, ang, x, y), dirR = q => rot(q, ang, 0, 0);
+      if (fr.a === 2) flame(R([0, -10 / 30]), dirR([0, -1]), 0.9);
+      if (fr.a === 1) flame(R([-17 / 30, 5 / 30]), dirR([-1, 0]), 0.5);
+      if (fr.a === 3) flame(R([17 / 30, 5 / 30]), dirR([1, 0]), 0.5);
+    }
+    px.fillStyle = C['--body']; px.beginPath();
+    LANDER.forEach((q, k) => { const p = P(...rot(q, ang, x, y)); k ? px.lineTo(...p) : px.moveTo(...p); }); px.closePath(); px.fill();
+    $('ex').textContent = `${(x - WW / 2).toFixed(2)}, ${y.toFixed(2)}`;
+    $('eth').textContent = `${(ang * 180 / Math.PI).toFixed(1)}°`;
+    $('ey').textContent = a.contact ? a.contact.map(c => (c ? '●' : '○')).join(' ') : '–';
+  }
+
+  function drawPlant() {
+    const w = plant.width, h = plant.height, d = devicePixelRatio || 1, fr = D.frames[f];
+    const nxt = D.frames[Math.min(f + 1, F - 1)], u = t / K;
+    px.clearRect(0, 0, w, h);
+    ({ CartPole: drawCartPole, Acrobot: drawAcrobot, LunarLander: drawLunar }[D.task] || (() => {}))(fr, nxt, u, w, h, d);
+    $('ea').textContent = actionText(fr);
+    $('frameLabel').textContent = `frame ${f + 1} / ${F}`;
+    const sec = ENV[D.task] || 0.02;
+    $('clock').textContent = `t = ${((f + u) * sec).toFixed(2)} s of ${(F * sec).toFixed(2)} s`;
+  }
+
+  function loop(ts) {
+    if (lastTs === null) lastTs = ts;
+    const dt = Math.min(0.1, (ts - lastTs) / 1000); lastTs = ts;
+    if (D) {
+      if (playing) { acc += dt * speedFps * K; let n = Math.floor(acc); acc -= n; n = Math.min(n, 4 * K); while (n-- > 0) stepOnce(); }
+      drawNet(); drawPlant();
+    }
+    requestAnimationFrame(loop);
+  }
+
+  // ---- inspecting one neuron: hover shows its outgoing synapses, click pins (click it again, or Esc, to clear) ----
+  function neuronAt(ev) {
+    if (!D || !geo) return -1;
+    const d = devicePixelRatio || 1, px = ev.offsetX * d, py = ev.offsetY * d;
+    let best = -1, bd = Infinity;
+    for (let n = 0; n < N; n++) { const dx = geo.ox + pos[n][0] * geo.s - px, dy = geo.oy + pos[n][1] * geo.s - py, dd = dx * dx + dy * dy;
+      if (dd < bd) { bd = dd; best = n; } }
+    const reach = Math.max(rad[D.m[best]] * geo.s * 1.6, 7 * d);
+    return bd <= reach * reach ? best : -1;
+  }
+  function showSel() {
+    const q = pinned >= 0 ? pinned : hover;
+    if (!D || q < 0) { $('selInfo').textContent = 'Hover over a neuron to see its own synapses; click to pin it.'; return; }
+    const M = D.modules[D.m[q]], L = (D.out && D.out[q]) || [], top = D.out_top && D.out_top[D.m[q]];
+    const name = M.action != null ? `${D.actions[M.action]}${M.role === 'inh' ? ' I' : ''}` : M.name;
+    const tot = L.reduce((a, e) => a + e[1], 0), byMod = {};
+    for (const [i, wt] of L) { const k = D.m[i]; byMod[k] = (byMod[k] || 0) + wt; }
+    const parts = Object.entries(byMod).sort((a, b) => b[1] - a[1]).map(([k, v]) => {
+      const Mk = D.modules[k]; return `${Mk.action != null ? D.actions[Mk.action] + (Mk.role === 'inh' ? ' I' : '') : Mk.name} ${v.toPrecision(2)}`; });
+    $('selInfo').textContent = `${name} neuron #${q}${pinned >= 0 ? ' (pinned)' : ''}: `
+      + (L.length ? `${L.length} targets${top ? ` (its strongest ${top} in each population; each input projects to all ${N - D.m.filter(k => k === 0).length} critic and actor neurons)` : ''}, strongest ${L[0][1].toPrecision(2)}, sum ${tot.toPrecision(2)}. By module: ${parts.join(', ')}. Units: ${D.out_unit}.`
+                  : M.role === 'critic' || (M.role === 'inh' && M.action == null) ? 'no outgoing synapses; its rate is read out as the value V.'
+                  : 'no outgoing synapses.');
+  }
+  net.addEventListener('mousemove', ev => { const n = neuronAt(ev); if (n !== hover) { hover = n; showSel(); } });
+  net.addEventListener('mouseleave', () => { hover = -1; showSel(); });
+  const setPin = n => { pinned = n; showSel(); if (D) history.replaceState(null, '', `#${D.id}${n >= 0 ? '@' + n : ''}`); };
+  net.addEventListener('click', ev => { const n = neuronAt(ev); setPin(n === pinned ? -1 : n); });
+  addEventListener('keydown', e => { if (e.key === 'Escape') setPin(-1); });
+
+  $('speed').value = String(speedFps);  // the default, 5 frames/s, even where the browser restores form state
+  $('play').textContent = playing ? 'Pause' : 'Play';
+  $('play').addEventListener('click', () => { playing = !playing; $('play').textContent = playing ? 'Pause' : 'Play'; });
+  $('speed').addEventListener('change', e => { speedFps = +e.target.value; hops.length = 0; });
+  $('scrub').addEventListener('input', () => { if (!D) return; f = +$('scrub').value; resetFrame(); });
+  $('task').addEventListener('change', () => { const tk = $('task').value; fillModels(tk); $('model').value = pick(tk); load(pick(tk)); });
+  $('model').addEventListener('change', () => load($('model').value));
+  addEventListener('keydown', e => { if (e.code === 'Space' && e.target === document.body) { e.preventDefault(); $('play').click(); } });
+  loadIndex();
+  requestAnimationFrame(loop);
+})();
