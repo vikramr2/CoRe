@@ -2,6 +2,22 @@
 
 ## 2026-10-31
 
+### Added: the walk replay of the best models, `experiments/viz.py` and `viz_template.html` (user request)
+
+- **User decisions:** all 28 best models; flow shown as sampled walkers; an snn-expert review of the cause rule before implementation.
+- `viz.py` records one frozen episode per model (the best of 10 on environment seeds 1000+k). It captures the spikes by wrapping module functions for the duration of the recording. No random draw moves: `tests/test_viz.py` checks that recorded and unrecorded episodes match on v4 flow, v4 branching and race CartPole.
+- Each displayed spike (head 0 of v4, copy 0 of a race model) gets one sampled cause: a parent spike (a walk step), the stimulus or background. The draw uses the parent posterior of a linear (Hawkes) cluster process.
+  - **Branching:** exact (parent ∝ T_ij at t−1).
+  - **LIF, QIF and noisy LIF:** linear-response approximations with pre-set response kernels and background rates measured on one model each (preliminary). The hop counts reproduce the counter c of Eq. 11b, not the observed walk κ. Earlier presynaptic spikes erased by a reset are excluded, and on race models only R→R parents are walk steps.
+  - **Flow:** 32 walkers per frame sampled from Eq. 1.
+- **Review findings (snn-expert, preliminary):**
+  - A cause rule without a background cause, using the membrane kernel, would put 19–31% of L/A outflow into C, against 0.1–0.3% in c.
+  - With the null cause and the measured kernels, per-synapse hops correlate 0.97 with c.
+- **Data:** 28 files, 39 MB, race input spikes stored as per-window counts. Spike causes per episode:
+  - v4 LIF: about 60% walk steps, 12% stimulus, 28–33% background.
+  - Race models: 0–1% walk steps on CartPole, 6–9% on Acrobot and LunarLander column arms; the rest is input or background.
+- `viz_template.html`: task and model selectors; the network laid out by module role; CartPole, Acrobot and LunarLander drawings. Published on `viz` as `index.html` with `data/`; the v3 page moves to `v3-replay.html`.
+
 ### Changed: the replay page moves to branch `viz` for GitHub Pages (user request)
 
 - New orphan branch `viz` holds only the page, as `index.html`, plus `.nojekyll` and a README. Once Pages is enabled on that branch, it is served at https://vikramr2.github.io/map-stdp/.

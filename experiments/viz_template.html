@@ -1,0 +1,491 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Map-STDP Walk Replay</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Condensed:wght@400;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Two instrument panes (network | environment) over one transport bar. Data: data/index.json + data/<id>.json
+   (experiments/viz.py). Each spike carries its sampled cause: an earlier spike (a walk step), the stimulus, or none. */
+:root {
+  --bg: #eef0f2; --panel: #f8f9fa; --ink: #1b2026; --muted: #5d6670; --rule: #cfd5db; --edge: #9aa4ae;
+  --stim: #3d6fb6; --lat1: #7a5bb0; --lat2: #a2569a; --critic: #6b7a89;
+  --act0: #c9622f; --act1: #2f9a6a; --act2: #b8487a; --act3: #2a8f9d; --hop: #d9a400;
+  --body: #2b3138; --accent: #c9622f; --track: #9aa4ae; --ground: #c3c9cf; --flame: #e08a1e;
+  --display: "IBM Plex Sans Condensed", "Arial Narrow", system-ui, sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #0f1216; --panel: #161a20; --ink: #e3e7eb; --muted: #8b95a0; --rule: #2a3038; --edge: #48525c;
+  --stim: #6f9be0; --lat1: #a58ae0; --lat2: #d083c6; --critic: #8d9aa8;
+  --act0: #f08a52; --act1: #4cc690; --act2: #e07aa6; --act3: #4fc0cf; --hop: #ffd23f;
+  --body: #d4d9de; --accent: #f08a52; --track: #48525c; --ground: #3a424b; --flame: #ffb347; color-scheme: dark } }
+:root[data-theme="dark"] {
+  --bg: #0f1216; --panel: #161a20; --ink: #e3e7eb; --muted: #8b95a0; --rule: #2a3038; --edge: #48525c;
+  --stim: #6f9be0; --lat1: #a58ae0; --lat2: #d083c6; --critic: #8d9aa8;
+  --act0: #f08a52; --act1: #4cc690; --act2: #e07aa6; --act3: #4fc0cf; --hop: #ffd23f;
+  --body: #d4d9de; --accent: #f08a52; --track: #48525c; --ground: #3a424b; --flame: #ffb347; color-scheme: dark }
+html, body { min-height: 100%; }
+body { margin: 0; background: var(--bg); color: var(--ink); font-family: var(--display); padding: 14px 16px; box-sizing: border-box; }
+.wrap { max-width: 1320px; margin: 0 auto; display: grid; gap: 12px; }
+header { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 18px; }
+h1 { font-size: 1.35rem; font-weight: 600; margin: 0; letter-spacing: 0.01em; }
+.pick { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.pick label { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); }
+.sub { color: var(--muted); font-size: 0.92rem; flex-basis: 100%; }
+.panes { display: grid; grid-template-columns: 3fr 2fr; gap: 12px; }
+@media (max-width: 860px) { .panes { grid-template-columns: 1fr; } }
+.pane { background: var(--panel); border: 1px solid var(--rule); border-radius: 6px; padding: 10px 12px; display: grid; gap: 8px; min-width: 0; align-content: start; }
+.pane h2 { margin: 0; font-size: 0.78rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); display: flex; justify-content: space-between; gap: 8px; }
+canvas { width: 100%; display: block; }
+#net { aspect-ratio: 16 / 11; }
+#plant { aspect-ratio: 3 / 2; }
+.readout { display: grid; grid-template-columns: repeat(auto-fit, minmax(118px, 1fr)); gap: 6px 12px; font-family: var(--mono); font-size: 0.8rem; font-variant-numeric: tabular-nums; }
+.readout div { display: grid; gap: 1px; }
+.readout span:first-child { color: var(--muted); font-family: var(--display); font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.06em; }
+.transport { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 14px; background: var(--panel); border: 1px solid var(--rule); border-radius: 6px; padding: 8px 12px; }
+button, select { font: 500 0.85rem var(--mono); color: var(--ink); background: var(--bg); border: 1px solid var(--rule); border-radius: 4px; padding: 5px 10px; cursor: pointer; max-width: 100%; }
+button:focus-visible, select:focus-visible, input:focus-visible { outline: 2px solid var(--hop); outline-offset: 2px; }
+#scrub { flex: 1 1 220px; min-width: 0; accent-color: var(--stim); }
+#clock { font-family: var(--mono); font-size: 0.82rem; font-variant-numeric: tabular-nums; color: var(--muted); }
+.legend { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 0.78rem; color: var(--muted); }
+.legend i { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 5px; vertical-align: -1px; }
+.legend i.hop { border-radius: 0; height: 2px; width: 14px; vertical-align: 3px; background: var(--hop); }
+.legend i.inp { background: transparent; border: 1.5px solid var(--ink); width: 8px; height: 8px; }
+.legend i.bg { background: var(--muted); opacity: 0.45; }
+footer { color: var(--muted); font-size: 0.82rem; max-width: 92ch; line-height: 1.5; display: grid; gap: 6px; }
+footer p { margin: 0; }
+footer a { color: var(--stim); }
+footer code { font-family: var(--mono); font-size: 0.78rem; }
+#status { color: var(--muted); font-family: var(--mono); font-size: 0.82rem; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>Map-STDP: the walk, spike by spike</h1>
+    <div class="pick">
+      <label for="task">Task</label><select id="task"></select>
+      <label for="model">Model</label><select id="model"></select>
+      <span id="status"></span>
+    </div>
+    <span class="sub" id="subtitle"></span>
+  </header>
+  <div class="panes">
+    <section class="pane">
+      <h2><span id="netTitle">Spiking network</span><span id="stepLabel"></span></h2>
+      <canvas id="net" role="img" aria-label="Network: neurons grouped in modules; spikes light up, walk steps are drawn as lines"></canvas>
+      <div class="legend" id="legend"></div>
+      <div class="readout">
+        <div><span>Walk steps</span><span id="rw"></span></div>
+        <div><span>Between modules</span><span id="rx2"></span></div>
+        <div><span>Stimulus-caused</span><span id="rs"></span></div>
+        <div><span>Background</span><span id="rb"></span></div>
+      </div>
+    </section>
+    <section class="pane">
+      <h2><span id="envTitle">Environment</span><span id="frameLabel"></span></h2>
+      <canvas id="plant" role="img" aria-label="Environment state"></canvas>
+      <div class="readout" id="envReadout"></div>
+    </section>
+  </div>
+  <div class="transport">
+    <button id="play" type="button">Pause</button>
+    <select id="speed" aria-label="Playback speed">
+      <option value="0.5">Slow: 0.5 frames/s</option>
+      <option value="5" selected>Normal: 5 frames/s</option>
+      <option value="25">Fast: 25 frames/s</option>
+    </select>
+    <input id="scrub" type="range" min="0" value="0" aria-label="Frame">
+    <span id="clock"></span>
+  </div>
+  <footer><p id="note"></p><p id="explain"></p>
+    <p>Models: the best run of each arm in the reported studies (<code>models/</code> on branch <code>dev</code>); recorded with <code>python -m experiments.viz</code>. The earlier single-model page (model v3): <a href="v3-replay.html">v3 replay</a>.</p></footer>
+</div>
+
+<script>
+(() => {
+  const $ = id => document.getElementById(id);
+  const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+  const TOKENS = ['--ink','--muted','--rule','--edge','--hop','--body','--accent','--track','--ground','--flame','--panel',
+                  '--stim','--lat1','--lat2','--critic','--act0','--act1','--act2','--act3'];
+  let C = {};
+  const ENV = {  // seconds per environment step, for the clock
+    CartPole: 0.02, Acrobot: 0.2, LunarLander: 0.02 };
+
+  // ---- state ----
+  let INDEX = [], D = null, N = 0, F = 0, K = 1, pos = [], members = [], col = [], rad = [], boxes = [];
+  let f = 0, t = 0, acc = 0, lastTs = null, speedFps = 5;
+  let playing = !matchMedia('(prefers-reduced-motion: reduce)').matches;
+  let glow, ring, level, hops = [], modCount, nWalk = 0, nCross = 0, nStim = 0, nBg = 0, fade = 4;
+  let staticLayer = null, staticKey = '';
+
+  const net = $('net'), plant = $('plant'), nx = net.getContext('2d'), px = plant.getContext('2d');
+  function fit(cv) { const r = cv.getBoundingClientRect(), d = devicePixelRatio || 1;
+    cv.width = Math.max(1, Math.round(r.width * d)); cv.height = Math.max(1, Math.round(r.height * d)); }
+  const readColors = () => { for (const v of TOKENS) C[v] = css(v); staticKey = ''; if (D) colorNeurons(); };
+  readColors();
+  matchMedia('(prefers-color-scheme: dark)').addEventListener('change', readColors);
+  new MutationObserver(readColors).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+  new ResizeObserver(() => { fit(net); fit(plant); staticKey = ''; }).observe(net);
+  new ResizeObserver(() => fit(plant)).observe(plant);
+
+  // ---- colours by module role ----
+  function modColor(k) {
+    const M = D.modules[k];
+    if (M.role === 'stim' || M.role === 'ctrl') return C['--stim'];
+    if (M.role === 'lat') return C[D.modules.slice(0, k).filter(x => x.role === 'lat').length % 2 ? '--lat2' : '--lat1'];
+    if (M.role === 'critic') return C['--critic'];
+    if (M.action != null) return C[`--act${M.action % 4}`];
+    return C['--critic'];
+  }
+  function colorNeurons() { col = D.m.map(k => modColor(k)); }
+
+  // ---- layout: stimulus/controller grid left, latents and critic centre, actions right (unit box 1 × 11/16) ----
+  function layout() {
+    const H = 11 / 16, nMod = D.modules.length;
+    members = Array.from({ length: nMod }, () => []);
+    D.m.forEach((k, i) => members[k].push(i));
+    pos = new Array(N); boxes = new Array(nMod);
+    const left = [], mid = [], right = [];
+    D.modules.forEach((M, k) => {
+      if (M.role === 'stim' || M.role === 'ctrl') left.push(k);
+      else if (M.action != null) right.push(k);
+      else mid.push(k);
+    });
+    const dense = N > 300;
+    // grid modules (left column); several are stacked
+    const placeGrid = (k, x0, y0, w, h) => {
+      const M = D.modules[k], [cols, rows] = M.grid, n = members[k].length;
+      const cell = Math.min(w / cols, h / rows), gx = x0 + (w - cell * cols) / 2, gy = y0 + (h - cell * rows) / 2;
+      members[k].forEach((i, c) => { const cx = Math.floor(c / rows), cy = rows - 1 - (c % rows);
+        pos[i] = [gx + (cx + 0.5) * cell, gy + (cy + 0.5) * cell]; });
+      boxes[k] = [gx, gy, gx + cell * cols, gy + cell * rows]; rad[k] = Math.min(0.42 * cell, 0.009);
+    };
+    const placeCluster = (k, cx, cy, maxR) => {
+      const n = members[k].length, step = maxR / Math.sqrt(n + 0.5);
+      members[k].forEach((i, c) => { const a = c * 2.39996, r = step * Math.sqrt(c + 0.5);
+        pos[i] = [cx + r * Math.cos(a), cy + r * Math.sin(a)]; });
+      boxes[k] = [cx - maxR, cy - maxR, cx + maxR, cy + maxR]; rad[k] = Math.min(0.42 * step, 0.009);
+    };
+    rad = new Array(nMod);
+    // left
+    const lh = (H - 0.1) / Math.max(1, left.length);
+    left.forEach((k, j) => { const y0 = 0.06 + j * lh;
+      if (D.modules[k].grid) placeGrid(k, 0.05, y0 + 0.02, 0.32, lh - 0.05);
+      else placeCluster(k, 0.21, y0 + lh / 2, Math.min(0.15, lh / 2 - 0.03)); });
+    // middle
+    const mh = (H - 0.08) / Math.max(1, mid.length);
+    mid.forEach((k, j) => placeCluster(k, 0.55, 0.06 + mh * (j + 0.5), Math.min(0.12, mh / 2 - 0.035)));
+    // right: one row per action; an action's E and I modules side by side
+    const acts = [...new Set(right.map(k => D.modules[k].action))].sort((a, b) => a - b);
+    const rh = (H - 0.08) / Math.max(1, acts.length);
+    acts.forEach((a, j) => {
+      const ks = right.filter(k => D.modules[k].action === a);
+      const cy = 0.06 + rh * (j + 0.5), r = Math.min(dense ? 0.06 : 0.1, rh / 2 - 0.035);
+      ks.forEach((k, q) => placeCluster(k, ks.length > 1 ? 0.79 + q * 0.14 : 0.84, cy, r));
+    });
+  }
+
+  // ---- static layer: module boxes, labels, synapses ----
+  function drawStatic(w, h, s, ox, oy) {
+    const key = `${w}x${h}|${D.id}`; if (key === staticKey && staticLayer) return;
+    staticKey = key;
+    staticLayer = document.createElement('canvas'); staticLayer.width = w; staticLayer.height = h;
+    const g = staticLayer.getContext('2d'), d = devicePixelRatio || 1;
+    const X = p => ox + p[0] * s, Y = p => oy + p[1] * s;
+    g.lineWidth = 0.6 * d;
+    for (const [i, j, wt] of D.edges) { if (pos[i] == null || pos[j] == null) continue;
+      g.globalAlpha = 0.04 + 0.36 * Math.sqrt(Math.max(0, wt)); g.strokeStyle = C['--edge'];
+      g.beginPath(); g.moveTo(X(pos[j]), Y(pos[j])); g.lineTo(X(pos[i]), Y(pos[i])); g.stroke(); }
+    g.globalAlpha = 1;
+    D.modules.forEach((M, k) => {
+      const [x0, y0, x1, y1] = boxes[k], pad = 8 * d;
+      g.strokeStyle = C['--rule']; g.lineWidth = d;
+      g.beginPath(); g.roundRect(X([x0]) - pad, Y([0, y0]) - pad, (x1 - x0) * s + 2 * pad, (y1 - y0) * s + 2 * pad, 7 * d); g.stroke();
+      if (M.grid && M.grid_labels) {
+        g.fillStyle = C['--muted']; g.font = `${10 * d}px ${css('--mono')}`; g.textAlign = 'center';
+        g.fillText(`${M.grid_labels[0]} →`, X([(x0 + x1) / 2]), Y([0, y1]) + pad + 12 * d);
+        g.save(); g.translate(X([x0]) - pad - 6 * d, Y([0, (y0 + y1) / 2])); g.rotate(-Math.PI / 2);
+        g.fillText(`${M.grid_labels[1]} →`, 0, 0); g.restore();
+      }
+    });
+  }
+
+  // ---- data loading ----
+  async function loadIndex() {
+    try {
+      const r = await fetch('data/index.json'); INDEX = (await r.json()).models;
+    } catch (e) {
+      $('status').textContent = 'Could not load data/index.json (serve this folder over http, e.g. python -m http.server).';
+      return;
+    }
+    const tasks = [...new Set(INDEX.map(m => m.task))];
+    const order = ['CartPole', 'Acrobot', 'LunarLander']; tasks.sort((a, b) => order.indexOf(a) - order.indexOf(b));
+    $('task').innerHTML = tasks.map(x => `<option>${x}</option>`).join('');
+    const want = decodeURIComponent(location.hash.slice(1));
+    const start = INDEX.find(m => m.id === want) || INDEX.find(m => m.task === tasks[0]);
+    $('task').value = start.task; fillModels(start.task); $('model').value = start.id; load(start.id);
+  }
+  function fillModels(task) {
+    const fams = { v4: 'Map-STDP model v4', race: 'TD-STDP backbone, race readout' };
+    const ms = INDEX.filter(m => m.task === task);
+    $('model').innerHTML = Object.keys(fams).map(fam => {
+      const xs = ms.filter(m => m.family === fam); if (!xs.length) return '';
+      return `<optgroup label="${fams[fam]}">${xs.map(m => `<option value="${m.id}">${m.label} (return ${Math.round(m.return)})</option>`).join('')}</optgroup>`;
+    }).join('');
+  }
+  async function load(id) {
+    const entry = INDEX.find(m => m.id === id); if (!entry) return;
+    $('status').textContent = 'loading…'; history.replaceState(null, '', `#${id}`);
+    const r = await fetch(`data/${entry.file}`); const data = await r.json();
+    if ($('model').value !== id) return;  // a newer choice superseded this load
+    D = data; N = D.m.length; F = D.frames.length; K = D.k; f = 0;
+    fade = Math.max(4, Math.round(K / 25));
+    for (const fr of D.frames) {  // spikes indexed by step
+      fr.at = Array.from({ length: K }, () => []);
+      for (const sp of fr.s) if (sp[0] >= 0 && sp[0] < K) fr.at[sp[0]].push(sp);
+    }
+    glow = new Float32Array(N); ring = new Float32Array(N); level = new Float32Array(N); modCount = new Float32Array(D.modules.length);
+    colorNeurons(); layout(); staticKey = ''; resetFrame();
+    $('scrub').max = F - 1; $('scrub').value = 0; $('status').textContent = '';
+    describe();
+  }
+
+  function describe() {
+    const tr = D.train || {}, bits = [];
+    if (tr.last100 != null) bits.push(`training last-100 return ${(+tr.last100).toFixed(0)}`);
+    if (tr.frozen != null) bits.push(`frozen ${(+tr.frozen).toFixed(0)}`);
+    $('subtitle').textContent = `${D.label} · seed ${D.seed} · ${bits.join(', ')}${bits.length ? ' · ' : ''}this episode: return ${(+D.return).toFixed(1)}, ${F} frames`;
+    $('netTitle').textContent = D.engine === 'flow' ? 'Flow: sampled walkers of the walk' : `Spiking network (${D.engine === 'nlif' ? 'noisy LIF' : D.engine === 'qif' ? 'QIF' : D.engine === 'lif' ? 'LIF' : 'branching'})`;
+    $('envTitle').textContent = { CartPole: 'CartPole-v1', Acrobot: 'Acrobot-v1', LunarLander: 'LunarLander-v3' }[D.task] || D.task;
+    $('note').textContent = D.note || '';
+    const sh = D.shares || {};
+    const pct = x => x == null ? '–' : `${(100 * x).toFixed(0)}%`;
+    $('explain').textContent = (D.engine === 'flow'
+      ? `Each line is one walker's hop; a ring is a restart at the stimulus.`
+      : `Each spike gets one sampled cause: an earlier spike that drove it (a walk step, drawn as a line), the stimulus (ring), or background noise (no marker). Over this episode: ${pct(sh.walk)} walk steps, ${pct(sh.stim)} stimulus, ${pct(sh.none)} background.`)
+      + ` Grey lines are the strongest synapses between modules. Weights are frozen for the replay.`;
+    const L = [];
+    const seen = new Set();
+    let inhAct = false;
+    D.modules.forEach((M, k) => { const key = M.role + (M.action ?? '') + (M.role === 'lat' ? k : '');
+      if (seen.has(key)) return; seen.add(key);
+      if (M.role === 'inh' && M.action != null) { inhAct = true; return; }
+      const name = M.action != null ? `action: ${D.actions[M.action]}${M.role === 'inh' ? ' (inhibitory)' : ''}` : M.name;
+      L.push(`<span><i style="background:${modColor(k)}"></i>${name}</span>`); });
+    if (inhAct) L.push(`<span>inh.: the inhibitory neurons of the action beside them</span>`);
+    L.push(`<span><i class="hop"></i>walk step: the earlier spike that caused this one</span>`);
+    L.push(`<span><i class="inp"></i>caused by the stimulus${D.engine === 'flow' ? ' (restart)' : ''}</span>`);
+    if (D.engine !== 'flow' && D.engine !== 'branching') L.push(`<span><i class="bg"></i>plain: background</span>`);
+    $('legend').innerHTML = L.join('');
+    envReadout();
+  }
+
+  // ---- playback ----
+  function resetFrame() {
+    t = 0; glow.fill(0); ring.fill(0); hops.length = 0; modCount.fill(0); nWalk = nCross = nStim = nBg = 0; level.fill(0);
+    // race inputs: spike counts per window (no causes to draw), shown as a steady level through the frame
+    for (const [n, c] of D.frames[f].inp || []) { level[n] = Math.min(1, c / (D.inp_max || 1)); modCount[D.m[n]] += c; }
+  }
+  function stepOnce() {
+    const fr = D.frames[f];
+    for (let i = 0; i < N; i++) { glow[i] *= 0.72; ring[i] *= 0.72; }
+    for (const h of hops) h[2]++;
+    while (hops.length && hops[0][2] > fade) hops.shift();
+    for (const [, n, c] of fr.at[t]) {
+      glow[n] = 1; modCount[D.m[n]]++;
+      if (c >= 0) { hops.push([c, n, 0]); nWalk++; if (D.m[c] !== D.m[n]) nCross++; }
+      else if (c === -1) { ring[n] = 1; nStim++; }
+      else nBg++;
+    }
+    t++;
+    if (t >= K) { f = (f + 1) % F; resetFrame(); $('scrub').value = f; }
+  }
+
+  function drawNet() {
+    const w = net.width, h = net.height, d = devicePixelRatio || 1;
+    const s = Math.min(w, h * 16 / 11), ox = (w - s) / 2, oy = (h - s * 11 / 16) / 2;
+    const X = p => ox + p[0] * s, Y = p => oy + p[1] * s;
+    drawStatic(w, h, s, ox, oy);
+    nx.clearRect(0, 0, w, h); nx.drawImage(staticLayer, 0, 0);
+    const fr = D.frames[f], decided = fr.dec >= 0 && t > fr.dec;
+    // module labels and counts
+    nx.textAlign = 'center';
+    D.modules.forEach((M, k) => {
+      const [x0, y0, x1, y1] = boxes[k], pad = 8 * d;
+      const won = M.action === fr.a && M.role !== 'inh' && (decided || D.engine === 'flow');
+      if (won) { nx.strokeStyle = modColor(k); nx.lineWidth = 2.5 * d;
+        nx.beginPath(); nx.roundRect(X([x0]) - pad, Y([0, y0]) - pad, (x1 - x0) * s + 2 * pad, (y1 - y0) * s + 2 * pad, 7 * d); nx.stroke(); }
+      const name = M.action != null && M.role !== 'inh' ? D.actions[M.action] : M.role === 'inh' ? 'inh.' : M.name;
+      nx.fillStyle = won ? modColor(k) : C['--muted']; nx.font = `${11 * d}px ${css('--display')}`;
+      nx.fillText(name + (won && D.engine !== 'flow' ? '  ✓' : ''), X([(x0 + x1) / 2]), Y([0, y0]) - pad - 4 * d);
+      nx.font = `${10 * d}px ${css('--mono')}`; nx.fillStyle = C['--muted'];
+      if (!(M.grid && M.grid_labels)) nx.fillText(`${modCount[k]}`, X([(x0 + x1) / 2]), Y([0, y1]) + pad + 12 * d);
+    });
+    // walk steps
+    nx.strokeStyle = C['--hop'];
+    for (const [j, i, age] of hops) { nx.globalAlpha = Math.max(0, 1 - age / fade); nx.lineWidth = (2.2 - 1.4 * age / fade) * d;
+      nx.beginPath(); nx.moveTo(X(pos[j]), Y(pos[j])); nx.lineTo(X(pos[i]), Y(pos[i])); nx.stroke(); }
+    nx.globalAlpha = 1;
+    // neurons
+    for (let n = 0; n < N; n++) {
+      const k = D.m[n], gl = Math.max(glow[n], 0.8 * level[n]), r0 = rad[k] * s;
+      const r = r0 * (1 + (D.modules[k].grid && D.modules[k].grid[0] * D.modules[k].grid[1] > 64 ? 0.35 : 1.1) * gl);
+      nx.beginPath(); nx.arc(X(pos[n]), Y(pos[n]), r, 0, 6.2832);
+      nx.globalAlpha = 0.24 + 0.76 * gl; nx.fillStyle = col[n]; nx.fill();
+      if (ring[n] > 0.05) { nx.globalAlpha = ring[n]; nx.strokeStyle = C['--ink']; nx.lineWidth = 1.4 * d;
+        nx.beginPath(); nx.arc(X(pos[n]), Y(pos[n]), r + 2.5 * d, 0, 6.2832); nx.stroke(); }
+    }
+    nx.globalAlpha = 1;
+    const unit = D.engine === 'flow' ? 'hop' : 'step';
+    $('stepLabel').textContent = `${unit} ${t} / ${K}${D.dt_ms && D.engine !== 'flow' && D.engine !== 'branching' ? ` (${(t * D.dt_ms).toFixed(1)} ms)` : ''}${t < D.burn ? ' · burn-in' : ''}`;
+    $('rw').textContent = `${nWalk}`;
+    $('rx2').textContent = `${nCross} (${nWalk ? (100 * nCross / nWalk).toFixed(0) : 0}%)`;
+    $('rs').textContent = `${nStim}`; $('rb').textContent = D.engine === 'flow' || D.engine === 'branching' ? '–' : `${nBg}`;
+  }
+
+  // ---- environments ----
+  const lerp = (a, b, u) => a + (b - a) * u;
+  const angLerp = (a, b, u) => { let dd = b - a; while (dd > Math.PI) dd -= 2 * Math.PI; while (dd < -Math.PI) dd += 2 * Math.PI; return a + dd * u; };
+  function envReadout() {
+    const rows = { CartPole: [['Cart x', 'ex'], ['Pole θ', 'eth']], Acrobot: [['Tip height', 'ey'], ['θ1, θ2', 'eth']],
+                   LunarLander: [['Position', 'ex'], ['Angle', 'eth'], ['Legs down', 'ey']] }[D.task] || [];
+    rows.push(['Action', 'ea']);
+    $('envReadout').innerHTML = rows.map(([l, id]) => `<div><span>${l}</span><span id="${id}"></span></div>`).join('');
+  }
+  function actionText(fr) {
+    const decided = fr.dec >= 0 && t > fr.dec;
+    if (D.engine === 'flow' || decided) return D.actions[fr.a];
+    if (t < D.burn) return 'burn-in';
+    return fr.dec < 0 && D.family === 'race' ? `${D.actions[fr.a]} (held)` : 'racing…';
+  }
+
+  function drawCartPole(fr, nxt, u, w, h, d) {
+    const x = lerp(fr.obs[0], nxt.obs[0], u), th = lerp(fr.obs[2], nxt.obs[2], u);
+    const sx = w / 5.6, cx = w / 2 + x * sx, ty = h * 0.72;
+    px.strokeStyle = C['--track']; px.lineWidth = 2 * d;
+    px.beginPath(); px.moveTo(w / 2 - 2.4 * sx, ty); px.lineTo(w / 2 + 2.4 * sx, ty); px.stroke();
+    px.fillStyle = C['--muted']; px.font = `${10 * d}px ${css('--mono')}`; px.textAlign = 'center';
+    for (const v of [-2.4, 0, 2.4]) { px.fillRect(w / 2 + v * sx - d, ty - 5 * d, 2 * d, 10 * d); px.fillText(v.toFixed(1), w / 2 + v * sx, ty + 20 * d); }
+    const L = 1.5 * sx;
+    px.globalAlpha = 0.12; px.fillStyle = C['--accent']; px.beginPath(); px.moveTo(cx, ty - 14 * d);
+    px.arc(cx, ty - 14 * d, L, -Math.PI / 2 - 0.2094, -Math.PI / 2 + 0.2094); px.closePath(); px.fill(); px.globalAlpha = 1;
+    px.fillStyle = C['--body']; px.beginPath(); px.roundRect(cx - 34 * d, ty - 24 * d, 68 * d, 20 * d, 4 * d); px.fill();
+    px.strokeStyle = C['--accent']; px.lineWidth = 7 * d; px.lineCap = 'round';
+    px.beginPath(); px.moveTo(cx, ty - 14 * d); px.lineTo(cx + L * Math.sin(th), ty - 14 * d - L * Math.cos(th)); px.stroke();
+    px.fillStyle = C['--panel']; px.beginPath(); px.arc(cx, ty - 14 * d, 3.5 * d, 0, 6.2832); px.fill();
+    if (D.engine === 'flow' || (fr.dec >= 0 && t > fr.dec) || (D.family === 'race' && fr.dec < 0)) {
+      const dir = fr.a ? 1 : -1, ax = cx + dir * 44 * d;
+      px.strokeStyle = C[`--act${fr.a}`]; px.fillStyle = px.strokeStyle; px.lineWidth = 3 * d;
+      px.beginPath(); px.moveTo(ax, ty - 14 * d); px.lineTo(ax + dir * 26 * d, ty - 14 * d); px.stroke();
+      px.beginPath(); px.moveTo(ax + dir * 34 * d, ty - 14 * d); px.lineTo(ax + dir * 24 * d, ty - 20 * d); px.lineTo(ax + dir * 24 * d, ty - 8 * d); px.fill();
+    }
+    $('ex').textContent = `${x >= 0 ? ' ' : ''}${x.toFixed(3)} m`;
+    $('eth').textContent = `${th >= 0 ? ' ' : ''}${(th * 180 / Math.PI).toFixed(2)}°`;
+  }
+
+  function drawAcrobot(fr, nxt, u, w, h, d) {
+    const a1 = angLerp(Math.atan2(fr.obs[1], fr.obs[0]), Math.atan2(nxt.obs[1], nxt.obs[0]), u);
+    const a2 = angLerp(Math.atan2(fr.obs[3], fr.obs[2]), Math.atan2(nxt.obs[3], nxt.obs[2]), u);
+    const sc = Math.min(w, h) / 4.8, ox = w / 2, oy = h / 2;
+    const P = (x, y) => [ox + x * sc, oy - y * sc];
+    const p1 = [Math.sin(a1), -Math.cos(a1)], p2 = [p1[0] + Math.sin(a1 + a2), p1[1] - Math.cos(a1 + a2)];
+    // goal line: the tip must rise above height 1
+    px.strokeStyle = C['--track']; px.setLineDash([6 * d, 5 * d]); px.lineWidth = 1.5 * d;
+    px.beginPath(); px.moveTo(...P(-2.2, 1)); px.lineTo(...P(2.2, 1)); px.stroke(); px.setLineDash([]);
+    px.fillStyle = C['--muted']; px.font = `${10 * d}px ${css('--mono')}`; px.textAlign = 'left';
+    px.fillText('goal', ...P(1.55, 1.08));
+    px.lineCap = 'round';
+    px.strokeStyle = C['--body']; px.lineWidth = 8 * d; px.beginPath(); px.moveTo(...P(0, 0)); px.lineTo(...P(...p1)); px.stroke();
+    px.strokeStyle = C['--accent']; px.beginPath(); px.moveTo(...P(...p1)); px.lineTo(...P(...p2)); px.stroke();
+    for (const q of [[0, 0], p1]) { px.fillStyle = C['--panel']; px.beginPath(); px.arc(...P(...q), 4 * d, 0, 6.2832); px.fill(); }
+    // torque on the second joint
+    const tq = fr.a - 1, show = D.engine === 'flow' || (fr.dec >= 0 && t > fr.dec) || (D.family === 'race' && fr.dec < 0);
+    if (show && tq !== 0) {
+      const [jx, jy] = P(...p1), r = 18 * d, a0 = -Math.PI * 0.8, a1e = -Math.PI * 0.2;
+      px.strokeStyle = C[`--act${fr.a}`]; px.fillStyle = px.strokeStyle; px.lineWidth = 2.5 * d;
+      px.beginPath(); px.arc(jx, jy, r, a0, a1e); px.stroke();
+      const ae = tq > 0 ? a0 : a1e, hx = jx + r * Math.cos(ae), hy = jy + r * Math.sin(ae), sg = tq > 0 ? -1 : 1;
+      px.beginPath(); px.moveTo(hx + sg * 6 * d, hy - 2 * d); px.lineTo(hx - 2 * d, hy - 7 * d); px.lineTo(hx - 3 * d, hy + 5 * d); px.fill();
+    }
+    $('ey').textContent = `${(-Math.cos(a1) - Math.cos(a1 + a2)).toFixed(2)} (goal 1)`;
+    $('eth').textContent = `${(a1 * 180 / Math.PI).toFixed(0)}°, ${(a2 * 180 / Math.PI).toFixed(0)}°`;
+  }
+
+  const LANDER = [[-14, 17], [-17, 0], [-17, -10], [17, -10], [17, 0], [14, 17]].map(([x, y]) => [x / 30, y / 30]);
+  function drawLunar(fr, nxt, u, w, h, d) {
+    const E = D.env || {}, WW = E.W || 20, HH = E.H || 13.333, sc = Math.min(w / WW, h / HH);
+    const ox = (w - WW * sc) / 2, oy = (h + HH * sc) / 2;
+    const P = (x, y) => [ox + x * sc, oy - y * sc];
+    if (E.terrain) { px.fillStyle = C['--ground']; px.beginPath(); px.moveTo(...P(0, 0));
+      for (const [x, y] of E.terrain) px.lineTo(...P(x, y)); px.lineTo(...P(WW, 0)); px.closePath(); px.fill(); }
+    if (E.helipad) { const [x1, x2, y] = E.helipad;
+      for (const x of [x1, x2]) { px.strokeStyle = C['--muted']; px.lineWidth = 1.5 * d;
+        px.beginPath(); px.moveTo(...P(x, y)); px.lineTo(...P(x, y + 1.6)); px.stroke();
+        px.fillStyle = C['--accent']; px.beginPath(); px.moveTo(...P(x, y + 1.6)); px.lineTo(...P(x, y + 1.1)); px.lineTo(...P(x + 0.8, y + 1.35)); px.fill(); } }
+    const a = fr.pose, b = nxt.pose || a;
+    if (!a) return;
+    const x = lerp(a.x, b.x, u), y = lerp(a.y, b.y, u), ang = angLerp(a.ang, b.ang, u);
+    const rot = (q, A, cx, cy) => [cx + q[0] * Math.cos(A) - q[1] * Math.sin(A), cy + q[0] * Math.sin(A) + q[1] * Math.cos(A)];
+    // legs
+    (a.legs || []).forEach((lg, i) => {
+      const lb = (b.legs || a.legs)[i], lx = lerp(lg[0], lb[0], u), ly = lerp(lg[1], lb[1], u), la = angLerp(lg[2], lb[2], u);
+      const q = [[-2 / 30, -8 / 30], [2 / 30, -8 / 30], [2 / 30, 8 / 30], [-2 / 30, 8 / 30]].map(p => rot(p, la, lx, ly));
+      px.fillStyle = a.contact && a.contact[i] ? C['--act1'] : C['--muted'];
+      px.beginPath(); q.forEach((p, k) => k ? px.lineTo(...P(...p)) : px.moveTo(...P(...p))); px.closePath(); px.fill();
+    });
+    // engine flames (the action in force)
+    const show = (fr.dec >= 0 && t > fr.dec) || (D.family === 'race' && fr.dec < 0) || D.engine === 'flow';
+    if (show && fr.a) {
+      px.fillStyle = C['--flame'];
+      const flame = (base, dir, len) => { const tip = [base[0] + dir[0] * len, base[1] + dir[1] * len], nrm = [-dir[1] * 0.12, dir[0] * 0.12];
+        px.beginPath(); px.moveTo(...P(base[0] + nrm[0], base[1] + nrm[1])); px.lineTo(...P(...tip)); px.lineTo(...P(base[0] - nrm[0], base[1] - nrm[1])); px.fill(); };
+      const R = q => rot(q, ang, x, y), dirR = q => rot(q, ang, 0, 0);
+      if (fr.a === 2) flame(R([0, -10 / 30]), dirR([0, -1]), 0.9);
+      if (fr.a === 1) flame(R([-17 / 30, 5 / 30]), dirR([-1, 0]), 0.5);
+      if (fr.a === 3) flame(R([17 / 30, 5 / 30]), dirR([1, 0]), 0.5);
+    }
+    px.fillStyle = C['--body']; px.beginPath();
+    LANDER.forEach((q, k) => { const p = P(...rot(q, ang, x, y)); k ? px.lineTo(...p) : px.moveTo(...p); }); px.closePath(); px.fill();
+    $('ex').textContent = `${(x - WW / 2).toFixed(2)}, ${y.toFixed(2)}`;
+    $('eth').textContent = `${(ang * 180 / Math.PI).toFixed(1)}°`;
+    $('ey').textContent = a.contact ? a.contact.map(c => (c ? '●' : '○')).join(' ') : '–';
+  }
+
+  function drawPlant() {
+    const w = plant.width, h = plant.height, d = devicePixelRatio || 1, fr = D.frames[f];
+    const nxt = D.frames[Math.min(f + 1, F - 1)], u = t / K;
+    px.clearRect(0, 0, w, h);
+    ({ CartPole: drawCartPole, Acrobot: drawAcrobot, LunarLander: drawLunar }[D.task] || (() => {}))(fr, nxt, u, w, h, d);
+    $('ea').textContent = actionText(fr);
+    $('frameLabel').textContent = `frame ${f + 1} / ${F}`;
+    const sec = ENV[D.task] || 0.02;
+    $('clock').textContent = `t = ${((f + u) * sec).toFixed(2)} s of ${(F * sec).toFixed(2)} s`;
+  }
+
+  function loop(ts) {
+    if (lastTs === null) lastTs = ts;
+    const dt = Math.min(0.1, (ts - lastTs) / 1000); lastTs = ts;
+    if (D) {
+      if (playing) { acc += dt * speedFps * K; let n = Math.floor(acc); acc -= n; n = Math.min(n, 4 * K); while (n-- > 0) stepOnce(); }
+      drawNet(); drawPlant();
+    }
+    requestAnimationFrame(loop);
+  }
+
+  $('play').textContent = playing ? 'Pause' : 'Play';
+  $('play').addEventListener('click', () => { playing = !playing; $('play').textContent = playing ? 'Pause' : 'Play'; });
+  $('speed').addEventListener('change', e => { speedFps = +e.target.value; hops.length = 0; });
+  $('scrub').addEventListener('input', () => { if (!D) return; f = +$('scrub').value; resetFrame(); });
+  $('task').addEventListener('change', () => { fillModels($('task').value); load($('model').value); });
+  $('model').addEventListener('change', () => load($('model').value));
+  addEventListener('keydown', e => { if (e.code === 'Space' && e.target === document.body) { e.preventDefault(); $('play').click(); } });
+  loadIndex();
+  requestAnimationFrame(loop);
+})();
+</script>
+</body>
+</html>
