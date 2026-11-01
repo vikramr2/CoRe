@@ -2,7 +2,7 @@
 Run from the repo root:
   python -m experiments.m2_viz train  --seed 3 [--la-beta 0.3]   -> experiments/results/viz_m2_W_s<seed>[_lb<B>].npz
   python -m experiments.m2_viz record --seed 3 [--la-beta 0.3]   -> experiments/results/viz_m2_episode_s<seed>[...].json
-  python -m experiments.m2_viz page --seed 3 [--la-beta 0.3] --out replay/replay.html  -> the page, js/ and data/
+  python -m experiments.m2_viz page --seed 3 [--la-beta 0.3] --out replay/replay.html  -> the page, css/, js/, data/
 Recording freezes the weights and the critic. Every frame keeps its spike raster, which spikes were stimulus input,
 the walk's hops (one sampled parent per non-input spike), the race winner and the cart state, so the page can replay
 the per-frame walk next to the pole."""
@@ -96,11 +96,13 @@ def record(seed, la_beta=0.0, tries=20):
 
 
 def page(seed, out, la_beta=0.0):
-    """The page at out, its script at js/<stem>.js and the recorded episode at data/<stem>.json beside it."""
+    """The page at out, its style at css/<stem>.css, its script at js/<stem>.js and the recorded episode at
+    data/<stem>.json beside it."""
     out, here = pathlib.Path(out), pathlib.Path(__file__).parent
-    for sub in ("js", "data"):
+    for sub in ("css", "js", "data"):
         (out.parent / sub).mkdir(parents=True, exist_ok=True)
     out.write_text((here / "m2_viz_template.html").read_text().replace("__STEM__", out.stem))
+    (out.parent / "css" / f"{out.stem}.css").write_text((here / "m2_viz_template.css").read_text())
     (out.parent / "js" / f"{out.stem}.js").write_text((here / "m2_viz_template.js").read_text())
     (out.parent / "data" / f"{out.stem}.json").write_text(path("E", seed, la_beta).read_text())
 

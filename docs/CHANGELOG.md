@@ -2,6 +2,13 @@
 
 ## 2026-11-01
 
+### Changed: the replay pages' styles moved to their own files (user request)
+
+- Each page's inline `<style>` is now a stylesheet:
+  - the main page: `experiments/viz_template.css`, published as `css/replay.css`;
+  - the v3 page: `experiments/m2_viz_template.css`, which `m2_viz.py page` writes as `css/<stem>.css`.
+- No rule changed; the CSS moved verbatim.
+
 ### Changed: the replay pages' scripts and the v3 episode moved to their own files (user request)
 
 - The main page's script moves from `viz_template.html` to `experiments/viz_template.js`, published as `js/replay.js`.
