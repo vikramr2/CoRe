@@ -2,6 +2,15 @@
 
 ## 2026-11-01
 
+### Changed: the walk replay's input links, default speed and default models (user request)
+
+- **Input links:** the input→population links of the race models are thin lines of fixed width. Weight-scaled bands covered the LunarLander network. A legend entry marks them as all-to-all.
+- **Default speed:** the page always starts at 5 frames/s, even where the browser restores form state.
+- **Default model per task** (user choice):
+  - CartPole: v4 flow, map term on, which shows the walk best;
+  - Acrobot: sealed columns, which solved the task;
+  - LunarLander: implicit columns, which performed best.
+
 ### Changed: the walk replay's layout, within-module synapses and a per-neuron synapse view (user request)
 
 - **Layout:** the inputs (or v4's controller) and the critic sit small at the top left. The action groups and latents sit on a ring: a pair, a triangle (Acrobot) or a square (LunarLander, v4). Each action's I population sits beside its E column.
