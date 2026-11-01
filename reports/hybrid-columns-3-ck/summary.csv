@@ -1,0 +1,4 @@
+group,task,engine,flags,n_declared,n,solved,T_f_mean,T_f_sd,T_f_n,T_s_mean,T_s_sd,T_s_median,T_m_mean,T_m_sd,T_m_n,ret_mean,ret_sd,ret_ge_M,ms_per_frame,resumes,mw_ref,mw_T_f,mw_T_s,mw_ret,gate_min_solved,gate_pass
+CartPole_base_ck,CartPole,nlif,--rate-target 40 --block 20 --fast --rate-match-rec --ent-match-rec,20,20,20,121.6,16.11645122227595,20,274.1,38.458939142935286,271.0,221.15,17.46217340424725,20,499.1669999999999,1.773877391478903,20,1.1411497914255144,0,,,,,,
+LunarLander_base_ck,LunarLander,nlif,--rate-target 40 --block 20 --fast --rate-match-rec --ent-match-rec --eta-cal,20,20,0,1435.2,397.39572217123833,20,nan,nan,inf,nan,nan,0,62.25649730415829,15.547809396322018,0,3.3396129744360605,0,,,,,,
+Acrobot_base_ck,Acrobot,nlif,--rate-target 40 --block 20 --fast --rate-match-rec --ent-match-rec --eta-cal,20,20,0,138.2,118.08115853090194,20,nan,nan,inf,nan,nan,0,-142.37599999999998,21.607006826490338,0,1.8058920524739013,0,,,,,,

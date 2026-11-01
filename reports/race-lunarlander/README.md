@@ -1,6 +1,6 @@
 # Study `race-lunarlander`: the race readout at the backbone's control rate on LunarLander against the published backbone
 
-**DRAFT, awaiting the user's approval. Not launched.** At launch this line becomes "Pre-registered <date, time>, before any run of this study". The design and tests below are then fixed.
+**Pre-registered 2026-10-30 02:45 EDT, before any run of this study** (approved by the user; code at commit `bcdd452`, the stamp committed on branch `race-lunarlander-study`, worktree `../map-stdp-racl`). The design and tests below are fixed.
 
 Nothing in this directory is written by hand except this README. `manifest.json`, `code.patch`, `runs/`, `summary.*` and `pairs.csv` come only from `python -m experiments.report`.
 
