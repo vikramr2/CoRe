@@ -2,6 +2,17 @@
 
 ## 2026-11-01
 
+### Changed: the replay pages' scripts and the v3 episode moved to their own files (user request)
+
+- The main page's script moves from `viz_template.html` to `experiments/viz_template.js`, published as `js/replay.js`.
+- `m2_viz.py page` now writes three files instead of inlining everything:
+  - the page;
+  - `js/<stem>.js`, from the new `m2_viz_template.js`;
+  - `data/<stem>.json`, the episode, byte-identical to the JSON the page used to embed (2.3 MB).
+- The v3 page fetches its episode, so like the main page it must be served over HTTP.
+- The v3 template was a fragment with no doctype or charset, so its text rendered garbled from a local server. It is now a full document with a UTF-8 charset.
+- `m2_viz.py`'s default output moves to `replay/`, which is gitignored.
+
 ### Changed: the walk replay's input links, default speed and default models (user request)
 
 - **Input links:** the input→population links of the race models are thin lines of fixed width. Weight-scaled bands covered the LunarLander network. A legend entry marks them as all-to-all.

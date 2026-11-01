@@ -2,7 +2,7 @@
 Run from the repo root:
   python -m experiments.m2_viz train  --seed 3 [--la-beta 0.3]   -> experiments/results/viz_m2_W_s<seed>[_lb<B>].npz
   python -m experiments.m2_viz record --seed 3 [--la-beta 0.3]   -> experiments/results/viz_m2_episode_s<seed>[...].json
-  python -m experiments.m2_viz page --seed 3 [--la-beta 0.3] --out replay.html  -> episode embedded in the template
+  python -m experiments.m2_viz page --seed 3 [--la-beta 0.3] --out replay/replay.html  -> the page, js/ and data/
 Recording freezes the weights and the critic. Every frame keeps its spike raster, which spikes were stimulus input,
 the walk's hops (one sampled parent per non-input spike), the race winner and the cart state, so the page can replay
 the per-frame walk next to the pole."""
@@ -96,8 +96,13 @@ def record(seed, la_beta=0.0, tries=20):
 
 
 def page(seed, out, la_beta=0.0):
-    tpl = (pathlib.Path(__file__).parent / "m2_viz_template.html").read_text()
-    pathlib.Path(out).write_text(tpl.replace("/*DATA*/", path("E", seed, la_beta).read_text()))
+    """The page at out, its script at js/<stem>.js and the recorded episode at data/<stem>.json beside it."""
+    out, here = pathlib.Path(out), pathlib.Path(__file__).parent
+    for sub in ("js", "data"):
+        (out.parent / sub).mkdir(parents=True, exist_ok=True)
+    out.write_text((here / "m2_viz_template.html").read_text().replace("__STEM__", out.stem))
+    (out.parent / "js" / f"{out.stem}.js").write_text((here / "m2_viz_template.js").read_text())
+    (out.parent / "data" / f"{out.stem}.json").write_text(path("E", seed, la_beta).read_text())
 
 
 if __name__ == "__main__":
@@ -105,7 +110,7 @@ if __name__ == "__main__":
     ap.add_argument("cmd", choices=("train", "record", "page"))
     ap.add_argument("--seed", type=int, default=3)
     ap.add_argument("--episodes", type=int, default=1500)
-    ap.add_argument("--out", default="replay.html")
+    ap.add_argument("--out", default="replay/replay.html")
     ap.add_argument("--la-beta", type=float, default=0.0, help="latent-output barrier (Eq. 4e, Proposal)")
     a = ap.parse_args()
     {"train": lambda: train(a.seed, a.episodes, a.la_beta), "record": lambda: record(a.seed, a.la_beta),
