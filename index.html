@@ -54,6 +54,7 @@ button:focus-visible, select:focus-visible, input:focus-visible { outline: 2px s
 .legend i { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 5px; vertical-align: -1px; }
 .legend i.hop { border-radius: 0; height: 2px; width: 14px; vertical-align: 3px; background: var(--hop); }
 .legend i.inp { background: transparent; border: 1.5px solid var(--ink); width: 8px; height: 8px; }
+.legend i.a2a { border-radius: 0; height: 1.5px; width: 14px; vertical-align: 3px; background: var(--stim); opacity: 0.6; }
 .legend i.bg { background: var(--muted); opacity: 0.45; }
 footer { color: var(--muted); font-size: 0.82rem; max-width: 92ch; line-height: 1.5; display: grid; gap: 6px; }
 footer p { margin: 0; }
@@ -96,7 +97,7 @@ footer code { font-family: var(--mono); font-size: 0.78rem; }
   </div>
   <div class="transport">
     <button id="play" type="button">Pause</button>
-    <select id="speed" aria-label="Playback speed">
+    <select id="speed" aria-label="Playback speed" autocomplete="off">
       <option value="0.5">Slow: 0.5 frames/s</option>
       <option value="5" selected>Normal: 5 frames/s</option>
       <option value="25">Fast: 25 frames/s</option>
@@ -202,12 +203,12 @@ footer code { font-family: var(--mono); font-size: 0.78rem; }
     const g = staticLayer.getContext('2d'), d = devicePixelRatio || 1;
     const X = p => ox + p[0] * s, Y = p => oy + p[1] * s;
     const mid = k => [(boxes[k][0] + boxes[k][2]) / 2, (boxes[k][1] + boxes[k][3]) / 2];
-    // input -> module bundles (race): width by the module's mean summed input weight
+    // input -> population links (race): one thin line per population, standing for its all-to-all input synapses
     g.strokeStyle = C['--stim']; g.lineCap = 'round';
-    for (const [a, b, wt] of D.bundles || []) {
+    for (const [a, b] of D.bundles || []) {
       const below = q => q[0] < boxes[a][2];  // the critic, under the inputs: leave from the bottom edge
       const q = mid(b), p = below(q) ? [mid(a)[0], boxes[a][3]] : [boxes[a][2], mid(a)[1]];
-      g.globalAlpha = 0.22; g.lineWidth = (1.5 + 8 * wt) * d;
+      g.globalAlpha = 0.45; g.lineWidth = 1.5 * d;
       g.beginPath(); g.moveTo(X(p), Y(p));
       if (below(q)) g.lineTo(X(q), Y(q)); else g.quadraticCurveTo(X([(p[0] + q[0]) / 2]), Y(p), X(q), Y(q));
       g.stroke();
@@ -266,10 +267,13 @@ footer code { font-family: var(--mono); font-size: 0.78rem; }
     const order = ['CartPole', 'Acrobot', 'LunarLander']; tasks.sort((a, b) => order.indexOf(a) - order.indexOf(b));
     $('task').innerHTML = tasks.map(x => `<option>${x}</option>`).join('');
     const [want, pin] = decodeURIComponent(location.hash.slice(1)).split('@');  // #<model id>[@<pinned neuron>]
-    const start = INDEX.find(m => m.id === want) || INDEX.find(m => m.task === tasks[0]);
+    const start = INDEX.find(m => m.id === want) || INDEX.find(m => m.id === pick(tasks[0]));
     $('task').value = start.task; fillModels(start.task); $('model').value = start.id;
     load(start.id, start.id === want && pin != null ? +pin : -1);
   }
+  const DEFAULT = { CartPole: 'v4-cartpole-flow-on', Acrobot: 'race-acrobot-nlif-cols_sealed_race_h2',
+                    LunarLander: 'race-lunarlander-nlif-cols_lam0_race_e' };  // flow shows the walk; the best TD-STDP arms
+  const pick = task => (INDEX.find(m => m.id === DEFAULT[task]) || INDEX.find(m => m.task === task)).id;
   function fillModels(task) {
     const fams = { v4: 'Map-STDP model v4', race: 'TD-STDP backbone, race readout' };
     const ms = INDEX.filter(m => m.task === task);
@@ -310,7 +314,7 @@ footer code { font-family: var(--mono); font-size: 0.78rem; }
       ? `Each line is one walker's hop; a ring is a restart at the stimulus.`
       : `Each spike gets one sampled cause: an earlier spike that drove it (a walk step, drawn as a line), the stimulus (ring), or background noise (no marker). Over this episode: ${pct(sh.walk)} walk steps, ${pct(sh.stim)} stimulus, ${pct(sh.none)} background.`)
       + (D.family === 'race'
-        ? ` Blue bands: input weight onto each population (every input neuron projects to every critic and actor neuron). Grey lines: the strongest recurrent synapses among the actor's E neurons, within and between columns.`
+        ? ` Blue lines: the all-to-all input synapses (every input neuron onto every critic and actor neuron; hover over an input to see its strongest). Grey lines: the strongest recurrent synapses among the actor's E neurons, within and between columns.`
         : ` Grey lines: the strongest synapses, within and between modules (T_ij = W_ij / d_j).`) + ` Weights are frozen for the replay.`;
     const L = [];
     const seen = new Set();
@@ -321,6 +325,7 @@ footer code { font-family: var(--mono); font-size: 0.78rem; }
       const name = M.action != null ? `action: ${D.actions[M.action]}${M.role === 'inh' ? ' (inhibitory)' : ''}` : M.name;
       L.push(`<span><i style="background:${modColor(k)}"></i>${name}</span>`); });
     if (inhAct) L.push(`<span>inh.: the inhibitory neurons of the action beside them</span>`);
+    if (D.bundles) L.push(`<span><i class="a2a"></i>all-to-all: every input neuron synapses onto every neuron of the population</span>`);
     L.push(`<span><i class="hop"></i>walk step: the earlier spike that caused this one</span>`);
     L.push(`<span><i class="inp"></i>caused by the stimulus${D.engine === 'flow' ? ' (restart)' : ''}</span>`);
     if (D.engine !== 'flow' && D.engine !== 'branching') L.push(`<span><i class="bg"></i>plain: background</span>`);
@@ -563,11 +568,12 @@ footer code { font-family: var(--mono); font-size: 0.78rem; }
   net.addEventListener('click', ev => { const n = neuronAt(ev); setPin(n === pinned ? -1 : n); });
   addEventListener('keydown', e => { if (e.key === 'Escape') setPin(-1); });
 
+  $('speed').value = String(speedFps);  // the default, 5 frames/s, even where the browser restores form state
   $('play').textContent = playing ? 'Pause' : 'Play';
   $('play').addEventListener('click', () => { playing = !playing; $('play').textContent = playing ? 'Pause' : 'Play'; });
   $('speed').addEventListener('change', e => { speedFps = +e.target.value; hops.length = 0; });
   $('scrub').addEventListener('input', () => { if (!D) return; f = +$('scrub').value; resetFrame(); });
-  $('task').addEventListener('change', () => { fillModels($('task').value); load($('model').value); });
+  $('task').addEventListener('change', () => { const tk = $('task').value; fillModels(tk); $('model').value = pick(tk); load(pick(tk)); });
   $('model').addEventListener('change', () => load($('model').value));
   addEventListener('keydown', e => { if (e.code === 'Space' && e.target === document.body) { e.preventDefault(); $('play').click(); } });
   loadIndex();
