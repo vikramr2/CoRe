@@ -481,3 +481,6 @@ experiments/results/*.ckpt.npz
 # Final-study run checkpoints and partials (experiments/report.py; deleted when a run completes)
 reports/**/*.ckpt.npz
 reports/**/*.partial
+
+# Full model archive (every saved model; kept off git, to go on a server; models/ keeps the best per arm)
+archive/

@@ -1,5 +1,53 @@
 # Changelog
 
+## 2026-10-31
+
+### Changed: `models/` keeps the best run per arm; every model moves to `archive/models/` (gitignored) (user request)
+
+- **Decision (user):** the repo keeps only the best model of each arm; the full set goes to a server later.
+  - `models/<study>/<arm>/` now holds one `.npz` per arm, 16 files, 16 MB. Best means the highest last-100 return of the reported run; ties (every CartPole arm at 500) are broken by the mean return over the run, then the lower seed. The table is in `models/README.md`.
+  - `archive/models/` (gitignored) holds every saved model: the 320 race runs in the same layout, and a copy of the 240 emergent-v4 models, which stay committed in `reports/emergent-v4/models/` because `latent-ablation` reads them.
+- `models/reproduce.sh` now saves to `archive/models/`. `models/verify.py` reads the archive and checks that each kept copy equals its archived file. All three studies verify: 120/120, 100/100 and 100/100 bit for bit.
+
+### Merged: `hybrid-columns-3-ck-study`, `hybrid-columns-4-study` and `race-lunarlander-study` into `columns-tdstdp` (`fc412a2`)
+
+- `race-lunarlander`'s results were committed on their study branch first (`7b0768a`). Every study branch is now in `columns-tdstdp`.
+
+### Finished: study `latent-ablation` (iteration 017 §6)
+
+- 240/240 runs, 25 min, none failed. **What the v4 latents do:** they are a sink, not a relay.
+  - Removing them reroutes the controller's whole outflow onto the actions and loses return in most groups (flow −206 to −287, branching on −118, LIF on −112 and sealed −80; Holm ≤ 0.002).
+  - Cutting only their output changes nothing where they have no path to the actions (sealed: exactly zero), and helps where they still drive the actions (branching on +47, LIF off +38).
+  - With the direct routing cut, the latents alone cannot carry the policy (every group to random).
+- The intact check reproduced the training record on all 180 flow, branching and LIF models.
+
+### Added: ablation of the final models, `experiments/ablate.py` and study `latent-ablation` (iteration 017; user request)
+
+- `experiments/ablate.py` evaluates a saved model with plasticity off under every condition of its family, on common random numbers.
+  - **v4** (emergent-v4 models): the latents lesioned (all, or one module), removed (rerouting the controller's outflow onto the actions), or left as the only path to the actions.
+  - **ck** (race-study models): the recurrence off, the cross-column or within-column kicks lesioned, or the recurrence at its untrained weights (`R_ep0`).
+- `report.py`: runner `ablate`, `summarize_ablate` (paired Wilcoxon on ablated − intact per model, one-sample Hodges–Lehmann, Holm within a family, declared checks excluded; contrasts between arms by Mann–Whitney), and the study `latent-ablation`. **Decision (user):** the study runs the v4 family only (240 runs); TD-STDP latents need their own iteration before there is anything meaningful to ablate. Pre-registered and launched 2026-10-31 (`reports/latent-ablation/README.md`). `tests/test_ablate.py`; the existing suite and golden fingerprints are unchanged.
+- **Finding:** the TD-STDP race models have no latent neurons (`n_lat = 0` in all 320), so the study ablates their recurrent columns as the counterpart; ablating TD-STDP latents would need new training runs.
+- **Finding:** sealed columns never learn their recurrence; R stays at `R_ep0` (exactly on LunarLander, to 1e-16 on Acrobot), because one module-level modulator per column is undone by the per-neuron normalisation.
+- **Finding:** a saved v4 model with the run's final β reproduces the training run's frozen returns bit for bit on flow, branching and LIF; QIF's warm state is not saved.
+
+## 2026-10-30
+
+### Finished: study `race-lunarlander` (iteration 016 §21)
+
+- 100/100 runs, 17.4 h, none failed (manifest `431403b`). Every race arm beats CK's softmax on last-100 after Holm: the race alone +23.8 [+12.1, +32.3], implicit columns +41.1, learned +37.6, sealed +35.9 (Holm ≤ 1e-4); early learning level; about 30 % of the actor spikes per decision. Columns beat the race without them (learned, sealed: Holm 0.005, 0.011); the regimes do not differ. Results in `../map-stdp-racl/reports/race-lunarlander/`, uncommitted on branch `race-lunarlander-study`; weight-saving reproduction of all 100 runs launched.
+
+### Added: `models/`, the final weights of the reported race studies; `save_ck_model` / `load_ck_model` (user request 2026-10-30)
+
+- `--save-model` on a CK run now writes the final model: W, the calibrated config as JSON, the Layout sizes and signs, the race's β and the calibration records, and with recurrence R, its mask and the R snapshots (the keys `experiments.structure` read before). `load_ck_model` rebuilds a frozen runner from it. `test_save_and_load_ck_model`. Default path unchanged.
+- `models/README.md`, `models/reproduce.sh` (reruns a study's reported runs with `--save-model`; deterministic per seed), `models/verify.py` (bit-for-bit returns against `reports/<study>/runs/`), `models/evaluate.py` (runs a saved model with plasticity off). **All 220 reported runs reproduced bit for bit with their final models saved**: `race-cartpole` 120/120 (12 MB), `race-acrobot` 100/100 (30 MB), in `models/<study>/<arm>/s<seed>.npz`.
+- `race-lunarlander`'s 100 runs reproduced with `--save-model` (user request; 2026-10-30 20:14 to 2026-10-31 13:39 EDT, one wave at 100 workers): **100/100 bit for bit with their models saved** (275 MB, `models/race-lunarlander/`); `models/verify.py` takes an optional reports root for a study whose results are still on its branch.
+- `--race-fit-gate` (default 0.05, unchanged; `inf` accepts every re-probe, token `fg<v>`; `test_race_fit_gate_option`): `race-cartpole` ran at `23cc0b9`, before the re-probe fit gate (`74f3dd1`), so its race arms reproduce only with the gate off (with the gate on, 6 of 20 no-column seeds matched); `models/reproduce.sh` passes `inf` for that study. Acrobot uses no re-probe. 84 tests, golden unchanged.
+
+### Merged: `race-cartpole-study` and `race-acrobot-study` into `columns-tdstdp` (`e1812f3`)
+
+- The reported tables and runs of both race studies are on the branch (`reports/race-cartpole/`, `reports/race-acrobot/`).
+
 ## 2026-10-29
 
 ### Result: LunarLander pilot with the E-rate surrogate; the race with columns beats the backbone on dev seeds (iteration 016 §21)

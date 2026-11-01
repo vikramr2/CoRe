@@ -12,7 +12,9 @@ the same as tdstdp --summary.
 A study's `runner` is "tdstdp" (default: experiments.tdstdp, the statistics above) or "m3" (experiments.m3 with
 M3_ENGINE_FLAG[engine], --out and --save-model reports/<study>/models/<group>/s<seed>.npz; statistics m3_stats; a
 study's `pairs` lists (on, off[, family]) groups compared by two-sided Mann-Whitney, Holm-adjusted per metric within
-a family)."""
+a family) or "ablate" (experiments.ablate on a saved model, --family per group, the model at <models>/s<seed>.npz;
+statistics summarize_ablate: per group and condition, the paired change from the intact model, Wilcoxon signed-rank,
+Holm within a family; declared `contrasts` compare that change between groups by Mann-Whitney)."""
 import argparse
 import concurrent.futures as cf
 import csv
@@ -302,6 +304,26 @@ def _race_lunarlander():
 
 
 STUDIES["race-lunarlander"] = _race_lunarlander()
+
+
+def _latent_ablation():
+    """latent-ablation (iteration 017; user decision 2026-10-31: v4 only, TD-STDP latents need their own iteration):
+    emergent-v4's 240 CartPole models with plasticity off, each under every condition of experiments.ablate family v4
+    (latent lesion, one module's lesion, removal, latent path only). Contrasts: the change under lesion_L and
+    remove_L compared between arms (map term off vs on, sealed vs on) per engine."""
+    groups, contrasts = {}, []
+    for e in ("flow", "branching", "qif", "lif"):
+        for arm in ("on", "off", "sealed"):
+            g = f"CartPole_{e}_{arm}"
+            groups[f"v4_{g}"] = dict(task="CartPole", engine=e, family="v4", seeds=range(2000, 2020), flags=[],
+                                     models=f"reports/emergent-v4/models/{g}")
+        contrasts += [(f"v4_CartPole_{e}_{x}", f"v4_CartPole_{e}_on", c, "v4-arm")
+                      for x in ("off", "sealed") for c in ("lesion_L", "remove_L")]
+    return dict(title="Ablations of the final v4 models: what the latents carry", runner="ablate", groups=groups,
+                contrasts=contrasts, reference={}, gates={})
+
+
+STUDIES["latent-ablation"] = _latent_ablation()
 COLUMNS = ["group", "task", "engine", "flags", "n_declared", "n", "solved", "T_f_mean", "T_f_sd", "T_f_n", "T_s_mean",
            "T_s_sd", "T_s_median", "T_m_mean", "T_m_sd", "T_m_n", "ret_mean", "ret_sd", "ret_ge_M", "ms_per_frame",
            "resumes", "mw_ref", "mw_T_f", "mw_T_s", "mw_ret", "gate_min_solved", "gate_pass"]
@@ -309,6 +331,9 @@ COLUMNS = ["group", "task", "engine", "flags", "n_declared", "n", "solved", "T_f
 
 def command(g, seed, out, runner="tdstdp", model=None):
     """The run's command line: experiments.tdstdp, or for runner 'm3' experiments.m3 (model: --save-model path)."""
+    if runner == "ablate":
+        return [sys.executable, "-m", "experiments.ablate", "--family", g["family"], "--model",
+                f"{g['models']}/s{seed}.npz", *g["flags"], "--out", str(out)]
     if runner == "m3":
         return [sys.executable, "-m", "experiments.m3", "--task", g["task"], "--seed", str(seed),
                 *M3_ENGINE_FLAG[g["engine"]], *g["flags"], "--out", str(out), "--save-model", str(model)]
@@ -431,6 +456,8 @@ def summarize(study, root=REPORTS, studies=None):
     s, d = (studies or STUDIES)[study], root / study
     if s.get("runner", "tdstdp") == "m3":
         return summarize_m3(study, s, d)
+    if s.get("runner") == "ablate":
+        return summarize_ablate(study, s, d)
     runs = {k: load_runs(d, k) for k in s["groups"]}
     for ref in list(s["reference"].values()) + [x for p in s.get("pairs", []) for x in p[:2]]:
         if "/" in ref and ref not in runs:  # "<study>/<group>": a group of another study (a reference or a pair member)
@@ -656,6 +683,122 @@ def summarize_m3(study, s, d):
         md.append("")
     (d / "summary.md").write_text("\n".join(md))
     return rows
+
+
+ABL_SOLVED = {"CartPole": 475.0, "Acrobot": -100.0, "LunarLander": 200.0}  # the scale of summarize_ablate's norm_loss
+ABL_MONITORS = ("silent_frac", "action_share", "latent_share", "spikes_per_head", "held_shift",
+                "actor_spikes_per_decision", "actor_spikes_to_decision", "deadline_frac")
+
+
+def walsh_hl(x, conf=0.95):
+    """One-sample Hodges-Lehmann estimate (median of the Walsh averages) and its distribution-free CI (normal
+    approximation of the signed-rank quantile)."""
+    from scipy.stats import norm
+    x = np.asarray(x, float)
+    n = len(x)
+    w = np.sort((x[:, None] + x[None, :])[np.triu_indices(n)] / 2)
+    k = int(np.floor(n * (n + 1) / 4 - norm.ppf(0.5 + conf / 2) * np.sqrt(n * (n + 1) * (2 * n + 1) / 24)))
+    k = min(max(k, 1), len(w))
+    return float(np.median(w)), float(w[k - 1]), float(w[len(w) - k])
+
+
+def _is_check(s, group, cond):
+    import fnmatch
+    return any(fnmatch.fnmatch(group, pat) and cond in cs for pat, cs in s.get("checks", {}).items())
+
+
+def summarize_ablate(study, s, d):
+    """summary.csv, contrasts.csv and summary.md of an ablate-runner study from runs/ only. Per group and condition:
+    the intact and ablated mean returns over models, the paired change delta = ablated - intact (per model, the mean
+    over its episodes): median, one-sample Hodges-Lehmann shift with its 95% CI, two-sided Wilcoxon signed-rank p
+    (1 when every delta is 0), Holm within the group's family (declared checks excluded); norm_loss = (intact -
+    ablated) / (intact - random), median over the models whose intact return clears random by 10% of (ABL_SOLVED -
+    random); the monitors' means. Contrasts: delta of one group against another's (Mann-Whitney, Hodges-Lehmann),
+    Holm within the contrast family."""
+    from scipy.stats import mannwhitneyu, wilcoxon
+
+    from experiments.tasks import TASKS
+    rand = {t: m2.random_return(200, task=TASKS[t])[0] for t in {g["task"] for g in s["groups"].values()}}
+    runs = {k: load_runs(d, k) for k in s["groups"]}
+    rows, delta = [], {}
+    for k, g in s["groups"].items():
+        rs = runs[k]
+        if not rs:
+            continue
+        I0 = np.array([r["conditions"]["intact"]["mean"] for r in rs])
+        rnd, thr = rand[g["task"]], ABL_SOLVED[g["task"]]
+        ok = I0 - rnd >= 0.1 * (thr - rnd)
+        for c in rs[0]["conditions"]:
+            A = np.array([r["conditions"][c]["mean"] for r in rs])
+            D = A - I0
+            delta[(k, c)] = D
+            row = dict(group=k, family=g["family"], task=g["task"], engine=g["engine"], condition=c, n=len(rs),
+                       random=rnd, intact_mean=float(I0.mean()), mean=float(A.mean()), delta_median=float(np.median(D)),
+                       hl=None, hl_lo=None, hl_hi=None, p=None, p_holm=None, check=_is_check(s, k, c),
+                       norm_loss_median=float(np.median((I0[ok] - A[ok]) / (I0[ok] - rnd))) if ok.any() else None,
+                       n_norm=int(ok.sum()))
+            if c != "intact":
+                row["hl"], row["hl_lo"], row["hl_hi"] = walsh_hl(D)
+                row["p"] = float(wilcoxon(D).pvalue) if np.any(D != 0) else 1.0
+            for mkey in ABL_MONITORS:
+                v = [r["conditions"][c].get(mkey) for r in rs]
+                v = [x for x in v if x is not None]
+                row[mkey] = float(np.mean(v)) if v else None
+            rows.append(row)
+    for fam in {r["family"] for r in rows}:
+        idx = [i for i, r in enumerate(rows) if r["family"] == fam and r["p"] is not None and not r["check"]]
+        for i, q in zip(idx, holm([rows[i]["p"] for i in idx])):
+            rows[i]["p_holm"] = q
+    cons = []
+    for a, b, c, fam in s.get("contrasts", []):
+        if (a, c) not in delta or (b, c) not in delta:
+            continue
+        x, y = delta[(a, c)], delta[(b, c)]
+        hl, lo, hi = hodges_lehmann(x, y)
+        p = float(mannwhitneyu(x, y, alternative="two-sided").pvalue) if np.any(x != y[0]) or np.any(y != y[0]) else 1.0
+        cons.append(dict(group=a, against=b, condition=c, family=fam, n=len(x), n_against=len(y),
+                         delta_median=float(np.median(x)), against_delta_median=float(np.median(y)), hl=hl, hl_lo=lo,
+                         hl_hi=hi, p=p, p_holm=None))
+    for fam in {c["family"] for c in cons}:
+        idx = [i for i, c in enumerate(cons) if c["family"] == fam]
+        for i, q in zip(idx, holm([cons[i]["p"] for i in idx])):
+            cons[i]["p_holm"] = q
+    if rows:
+        with open(d / "summary.csv", "w", newline="") as f:
+            w = csv.DictWriter(f, list(rows[0]))
+            w.writeheader()
+            w.writerows(rows)
+    if cons:
+        with open(d / "contrasts.csv", "w", newline="") as f:
+            w = csv.DictWriter(f, list(cons[0]))
+            w.writeheader()
+            w.writerows(cons)
+    md = [f"# {study}: {s['title']}", "", "Generated by `python -m experiments.report summarize` from runs/ only. "
+          "delta = ablated - intact mean return per model (paired); HL = one-sample Hodges-Lehmann shift [95% CI]; p = "
+          "two-sided Wilcoxon signed-rank, Holm within the family (checks excluded, marked ✓); norm. loss = (intact - "
+          "ablated) / (intact - random), median over the models above the random floor (n).", ""]
+    for fam in sorted({r["family"] for r in rows}):
+        md += [f"## Family {fam}", "", "| Group | Condition | n | Intact | Ablated | Δ median | HL [95% CI] | p Holm | "
+               "Norm. loss (n) | Monitors |", "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |"]
+        for r in (r for r in rows if r["family"] == fam):
+            mon = ", ".join(f"{m} {r[m]:.3g}" for m in ABL_MONITORS if r[m] is not None)
+            hl = f"{r['hl']:+.1f} [{r['hl_lo']:+.1f}, {r['hl_hi']:+.1f}]" if r["hl"] is not None else "–"
+            ph = "✓ check" if r["check"] else (f"{r['p_holm']:.2g}" if r["p_holm"] is not None else "–")
+            nl = f"{r['norm_loss_median']:+.2f} ({r['n_norm']})" if r["norm_loss_median"] is not None else "–"
+            md.append(f"| `{r['group']}` | {r['condition']} | {r['n']} | {r['intact_mean']:.1f} | {r['mean']:.1f} | "
+                      f"{r['delta_median']:+.1f} | {hl} | {ph} | {nl} | {mon} |")
+        md.append("")
+    if cons:
+        md += ["## Contrasts (Δ of group vs Δ of against; Mann-Whitney, Holm within the family)", "",
+               "| Group | Against | Condition | Family | Δ median | Against Δ median | HL [95% CI] | p | p Holm |",
+               "| --- | --- | --- | --- | --- | --- | --- | --- | --- |"]
+        for c in cons:
+            md.append(f"| `{c['group']}` | `{c['against']}` | {c['condition']} | {c['family']} | "
+                      f"{c['delta_median']:+.1f} | {c['against_delta_median']:+.1f} | "
+                      f"{c['hl']:+.1f} [{c['hl_lo']:+.1f}, {c['hl_hi']:+.1f}] | {c['p']:.2g} | {c['p_holm']:.2g} |")
+        md.append("")
+    (d / "summary.md").write_text("\n".join(md))
+    return rows, cons
 
 
 def main():

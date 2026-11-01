@@ -197,6 +197,8 @@ class Config:
     race_theta: float = 0.0  # race: bound on a column's E count (0 = round(n_ae rate_target freeze), CKRunner)
     race_beta: float = 0.0  # race: sharpness of the surrogate softmax(beta log r_E) of the E rates (0 = calibrate_race)
     race_reprobe: int = 0  # race: re-run the contrast probe at the current W (and R) every N episodes (0 = never)
+    race_fit_gate: float = 0.05  # reprobe_step: accept a re-probed beta only if the probe's fit <= this (inf: no gate;
+    # the pre-gate behaviour of study race-cartpole, models/reproduce.sh)
     # iteration 016 §20 Stage B' (race, --eta-cal): the actor rows' credit, 'surrogate' (p~ = softmax(beta log r)) or
     # the spike score of lif.post_scores, 'hazard' ((S - h) psi, clipped) | 'noise' (the exact observed-membrane score)
     credit: str = "surrogate"
@@ -266,6 +268,7 @@ def tokens(cfg):
     t += ["em"] if cfg.ent_match_rec else []
     t += ["nl"] if cfg.norm_logits else []
     t += [f"rc{cfg.c_t:g}"] if cfg.c_t else []
+    t += [f"fg{cfg.race_fit_gate:g}"] if cfg.race_fit_gate != 0.05 else []
     t += [f"rf{cfg.rate_floor:g}"] if cfg.rate_floor else []
     t += [f"em{cfg.eta_mult_a:g}"] if cfg.eta_mult_a != 1.0 else []
     t += [f"bc{cfg.beta_c:g}"] if cfg.beta_c != p.beta_c else []
@@ -1199,7 +1202,7 @@ def reprobe_step(runner, episode):
     gated: its fit is reported."""
     rec = reprobe_race(runner, episode)
     fit = race_fit(rec)
-    if fit <= RACE_FIT_GATE:
+    if fit <= runner.cfg.race_fit_gate:
         runner.beta = rec["beta"]
     else:
         rec["accepted"] = False
@@ -1359,9 +1362,8 @@ def run_ck(cfg, log_every=50, out=None, save_model=None):
         r.snaps[len(r.returns)] = r.hr.R.copy()
         if len(r.returns) not in r.snaps_kc:  # else the SNAP_EVERY snapshot of this episode already holds the pairs
             r.snaps_kc[len(r.returns)] = r.hr.class_table()
-        if save_model:
-            np.savez(save_model, m=r.hr.m, roles=r.hr.roles, mask=r.hr.mask, ridx=r.hr.ridx,
-                     episodes=np.array(sorted(r.snaps)), **{f"R_ep{k}": v for k, v in r.snaps.items()})
+    if save_model:
+        save_ck_model(save_model, cfg, r, eta_sgd, s_cal, rec_cal)
     res = result_ck(cfg, r, t0, eta_sgd, resumes, s_cal, rec_cal)
     fn.write_text(json.dumps(res))
     fn.with_suffix(".partial").unlink(missing_ok=True)
@@ -1382,6 +1384,37 @@ def rec_line(hr):
             f"{mx('causal'):.4f} within {mx('within'):.3f} L_obs {mx('L_obs'):.3f} rate {mx('rate'):.0f} Hz repeat "
             f"{mx('repeat'):.2f}/{mx('repeat_chance'):.2f}" + (f" lat {mx('rate_lat0'):.0f}/{mx('rate_lat1'):.0f} Hz "
                                                                f"lat_out {mx('lat_out'):.3f}" if hr.Kr > hr.K else ""))
+
+
+def save_ck_model(path, cfg, r, eta_sgd=None, s_cal=None, rec_cal=None):
+    """The final model of a CK run as one .npz (--save-model): the input weights W (n_post x n_in, CK units), the
+    calibrated config as JSON (s_in, alphas, etas after --eta-cal, race beta), the Layout sizes, the post signs and
+    the race's beta; with recurrence also R, its mask and module labels and the R snapshots (the keys
+    experiments.structure reads). load_ck_model() rebuilds a frozen runner from it (models/evaluate.py)."""
+    meta = dict(W=r.W, config=json.dumps(dataclasses.asdict(cfg)), n_in=r.lay.n_in, n_ce=cfg.n_ce, n_ci=cfg.n_ci,
+                n_ae=cfg.n_ae, n_ai=cfg.n_ai, K=r.K, n_lat=r.lay.n_lat, sign=r.lay.sign, episodes_run=len(r.returns),
+                beta=getattr(r, "beta", 0.0), eta_sgd_mV=np.asarray(eta_sgd if eta_sgd is not None else []),
+                s_cal=np.asarray(s_cal if s_cal is not None else []), rec_cal=json.dumps(rec_cal or {}))
+    if r.hr is not None:
+        meta.update(R=r.hr.R, m=r.hr.m, roles=r.hr.roles, mask=r.hr.mask, ridx=r.hr.ridx,
+                    episodes=np.array(sorted(r.snaps)), **{f"R_ep{k}": v for k, v in r.snaps.items()})
+    pathlib.Path(path).parent.mkdir(parents=True, exist_ok=True)
+    np.savez(path, **meta)
+
+
+def load_ck_model(path, rng_seed=TDSTDP_SEED):
+    """A frozen CKRunner (no plasticity) holding the saved W (and R, mask) of save_ck_model: its tick() runs the policy
+    in the environment and appends episode returns to .returns. The saved config carries every calibrated value, so no
+    calibration runs."""
+    z = np.load(path, allow_pickle=False)
+    cfg = Config(**json.loads(str(z["config"])))
+    r = CKRunner(cfg, rng_seed=rng_seed, frozen=True)
+    r.W[:] = z["W"]
+    if r.hr is not None and "R" in z:
+        r.hr.R[:], r.hr.mask[:] = z["R"], z["mask"]
+    if "beta" in z and hasattr(r, "beta"):
+        r.beta = float(z["beta"])
+    return r
 
 
 def result_ck(cfg, r, t0, eta_sgd, resumes, s_cal=None, rec_cal=None):
@@ -1611,6 +1644,8 @@ def main():
                     help="nlif: low-rate regime: initial post rate (Hz; tau_ref 2 ms; calibrate_low)")
     ap.add_argument("--fast", action="store_true", help="update summed over copies in one product (not bit-identical)")
     ap.add_argument("--beta-c", type=float, default=None, help="critic bias (preset override; 016 §20 Acrobot rule)")
+    ap.add_argument("--race-fit-gate", type=float, default=None,
+                    help="race: accept a re-probed beta only if the probe fit <= this (default 0.05; inf = no gate)")
     ap.add_argument("--eta-mult-a", type=float, default=None, help="--eta-cal: actor step multiplier (per-task grid)")
     ap.add_argument("--rate-cost", type=float, default=None,
                     help="CK's target-rate term c_t on the actor E rows, target rate_target (016 §18; pre-set 5e-4)")
@@ -1648,7 +1683,8 @@ def main():
                     help="race: re-run the contrast probe at the current W every N episodes (016 §18 fix a; preset 50)")
     ap.add_argument("--credit", choices=("surrogate", "hazard", "noise"), default="surrogate",
                     help="race, --eta-cal: the actor rows' credit, the surrogate or the spike score (016 §20)")
-    ap.add_argument("--save-model", default=None, help="rec: R snapshots (.npz) for structure analysis")
+    ap.add_argument("--save-model", default=None,
+                    help="final model .npz: W, config, beta; with rec also R and its snapshots")
     ap.add_argument("--out", default=None, help="result .json path (default experiments/results/<name>.json)")
     ap.add_argument("--summary", action="store_true")
     a = ap.parse_args()
@@ -1660,7 +1696,7 @@ def main():
         kw["fast"] = True
     kw.update({k: v for k, v in (("rate_target", a.rate_target), ("c_t", a.rate_cost), ("rate_floor", a.rate_floor),
                                  ("chi_rec", a.chi_rec),
-                                 ("beta_c", a.beta_c), ("eta_mult_a", a.eta_mult_a),
+                                 ("beta_c", a.beta_c), ("eta_mult_a", a.eta_mult_a), ("race_fit_gate", a.race_fit_gate),
                                  ("lam", a.lam), ("lam_ratio", a.lam_ratio),
                                  ("lam_rec", a.lam_rec), ("eta_rec", a.eta_rec), ("stat_windows", a.stat_windows),
                                  ("pair_ms", a.pair_ms), ("n_lat_mod", a.n_lat_mod), ("la_beta", a.la_beta))

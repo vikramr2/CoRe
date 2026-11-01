@@ -980,3 +980,42 @@ def test_race_e_rate_invariance_n_ai0():
         R = np.random.default_rng(1).uniform(0, 0.1, (5, 2, r.lay.n_post))
         assert np.array_equal(R @ r.MaE.T, R @ r.lay.Ma.T)
         assert np.allclose(R @ r.MaE.T, R[..., r.apost] @ r.Mcnt.T / r.cfg.n_ae)
+
+
+def test_save_and_load_ck_model(tmp_path):
+    """--save-model writes the final W, the calibrated config, the race beta and (with rec) R; load_ck_model rebuilds a
+    frozen runner that holds them and runs the policy (returns appended) without any plasticity."""
+    cfg = ex.preset("CartPole", seed=0, engine="nlif", s_in=0.1, rate_target=40.0, block=20, fast=True, readout="race",
+                    race_beta=6.0, rec="cols", chi_rec=0.3, lam=0.0, rec_seal=True, eta_rec=0.1, lam_rec=0.0)
+    r = ex.CKRunner(cfg)
+    for _ in range(30):
+        r.tick()
+    r.snaps[len(r.returns)] = r.hr.R.copy()
+    p = tmp_path / "m.npz"
+    ex.save_ck_model(p, cfg, r, eta_sgd=np.array([0.01, 0.02]))
+    z = np.load(p, allow_pickle=False)
+    assert z["W"].shape == r.W.shape and np.array_equal(z["W"], r.W) and np.array_equal(z["R"], r.hr.R)
+    assert z["K"] == 2 and z["n_in"] == r.lay.n_in and float(z["beta"]) == 6.0
+    assert z["eta_sgd_mV"].tolist() == [0.01, 0.02]
+    q = ex.load_ck_model(p)
+    assert q.frozen and np.array_equal(q.W, r.W) and np.array_equal(q.hr.R, r.hr.R) and q.beta == 6.0
+    W0 = q.W.copy()
+    for _ in range(40):
+        q.tick()
+    assert np.array_equal(q.W, W0) and np.array_equal(q.hr.R, r.hr.R)  # frozen: no plasticity on W or R
+
+
+def test_race_fit_gate_option(monkeypatch):
+    """--race-fit-gate sets the re-probe acceptance threshold (default 0.05, token fg<v> otherwise; inf accepts every
+    re-probe, the behaviour before the gate existed, which models/reproduce.sh uses for race-cartpole)."""
+    r = _race_runner()
+    assert r.cfg.race_fit_gate == 0.05 and "fg" not in ex.name(r.cfg)
+    q = _race_runner(race_fit_gate=float("inf"))
+    assert "fginf" in ex.name(q.cfg)
+    rec = {"beta": 9.0, "win0": [0.0, 0.5, 1.0], "win0_surrogate": [0.3, 0.5, 0.7], "episode": 50}  # fit 0.3
+    monkeypatch.setattr(ex, "reprobe_race", lambda runner, ep: dict(rec))
+    b0 = r.beta
+    ex.reprobe_step(r, 50)
+    assert r.beta == b0 and r.race_cal_history[-1].get("accepted", True) is False
+    ex.reprobe_step(q, 50)
+    assert q.beta == 9.0 and q.race_cal_history[-1].get("accepted", True) is True

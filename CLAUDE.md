@@ -29,6 +29,7 @@ Research question: can a spiking network's communities serve as its states, givi
 - `experiments/tasks.py`: the M3 task registry (sizes, encoder, reward, episodes). `experiments/m3.py`: per-task runs and summaries, results in `experiments/results/m3_<task>_<backend>[_h<H>]_lb<β>[_tn<s>][_<variant>]_s<seed>.json`. `experiments/ceiling.py`: the policy-class ceiling (CEM over the flow policy's actions × controller matrix).
 - `experiments/m2_viz.py` + `m2_viz_template.html`: train → record → page pipeline for the replay page (`replay.html`).
 - `mapstdp/tdstdp.py` + `experiments/tdstdp.py` (iteration 013, a baseline, not Map-STDP): the feed-forward TD-STDP actor-critic of Chung & Kozma 2020 (docstrings cite "[CK Eq. n]") on the branching step without presynaptic normalisation, plus BindsNET's LIF as a control (`--engine lif`) and the branching step's noise-free limit (`--engine flow`). The default follows the authors' code (`reference/td_stdp`, gitignored) where it disagrees with the paper: `PRESETS` are their `config_cp.ini` and `config_ll.ini` in mV, converted to branching units by `MV` = 13, and `CKRunner` and `block_learn_ck` transcribe their loop and rule. Traces are summed in closed form over blocks of frozen W (block 1 = the per-ms rule). `--legacy` reproduces the pre-audit runs (CK Table 1, `MV_LEGACY` = 1300). Results go to `experiments/results/tdstdp_<task>[_ck][_<tokens>]_s<seed>.json`.
+- `experiments/ablate.py` (iteration 017): a saved model with plasticity off under ablation conditions: v4 latents lesioned, removed or the only path to the actions; TD-STDP recurrent columns off, lesioned across or within columns, or untrained. Study runner `ablate` (`summarize_ablate`: paired Wilcoxon on ablated − intact per model).
 - `experiments/report.py`: the final-study runner. Studies are declared in `STUDIES` (groups → task, engine, flags, seeds; a reference group per task; gates). `run` launches the declared runs through `--out` and resumes checkpointed ones; A study's `runner` is `tdstdp` or `m3`. `summarize` rebuilds the summary from `runs/` only, with `tdstdp.group_stats` (the statistics `tdstdp --summary` uses) or `m3_stats` and the declared on/off `pairs`; a study's reference may be another study's group, `"<study>/<group>"`.
 - **Results layout.**
   - `experiments/results/` is the **intermediates** store: every dev, tuning and diagnostic run, and the default output of every CLI. Existing files stay where they are, because tests and iteration records reference them.
@@ -37,6 +38,7 @@ Research question: can a spiking network's communities serve as its states, givi
     - `manifest.json`: git HEAD, the sha256 of the uncommitted code in `mapstdp/` and `experiments/` (saved as `code.patch`), versions, and the exact per-run commands;
     - `runs/<group>/s<seed>.json`: the raw results;
     - `summary.csv` and `summary.md`.
+  - `models/` holds the best run per arm of the race studies (`models/README.md`); `archive/models/` (gitignored, kept on a server) holds every saved model.
   - A study uses one code state. The runner refuses to resume if the code changed. Checkpoints and partials (`*.ckpt.npz`, `*.partial`) are gitignored.
 - Each `mapstdp` module has a `__main__` self-check (Eq. 1a bound, finite-difference gradient, Monte Carlo three-factor average, `W_snm` orientation). Extend it when you add a rule.
 
@@ -69,6 +71,7 @@ python -m experiments.tdstdp --summary      # T_f, T_s, solved fraction, last-10
 python -m experiments.report run tdstdp-baseline --workers 40   # a final study -> reports/<study>/ (resumes; then summarizes)
 python -m experiments.report summarize tdstdp-baseline          # rebuild reports/<study>/summary.csv and .md from runs/
 python -m experiments.report summarize tdstdp-baseline-flow     # the flow-engine arms (companion study)
+python -m experiments.ablate --family v4 --model reports/emergent-v4/models/CartPole_lif_on/s2000.npz --out X.json   # ablations of one saved model (--family ck: race models)
 pytest -q tests                            # behaviour lock (see Tooling)
 pytest -q tests -k "flow-exempt"           # one case, e.g. one golden fingerprint
 ruff check .

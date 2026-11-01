@@ -813,3 +813,18 @@ Secondary: sealed vs no columns +22.3 [+5.8, +41.8] (p 0.011); learned vs no col
 
 - **The fix did what the diagnosis said:** the early phase is now level with the backbone (AUC over the first 3000 episodes within ± 8, where the old surrogate trailed by 40–60) and the late level is above it: learned columns +17 and sealed +31 last-100 points with CIs clear of zero at n = 10, the race without columns +6 (n.s.). **On LunarLander the columns are what beats the backbone,** both column regimes above the race without them (p 0.01, 0.03), sealed highest on the third task in a row; and every race arm reaches its decisions with 30 % of the softmax's actor spikes at a held 38 Hz where the softmax's rate rises to 58. The old-surrogate ablation (above) had the no-column race higher (108, 3 seeds) and the columns lower; with the credit restored the ordering is sealed > learned > none, as on CartPole and Acrobot.
 - **Settings for the study:** as this pilot, no further tuning; implicit columns added for the regime contrast (untested here). The pre-registered expectations in the README are these numbers.
+
+**Study `race-lunarlander` result (2026-10-30 02:52–20:13 EDT, 100/100 runs, none failed; numbers from `../map-stdp-racl/reports/race-lunarlander/`, written by `experiments.report`; seeds 7200–7219; manifest `431403b`).** Primary last-100 return, Hodges–Lehmann shift [95 % CI] (Holm within the family), Δ = 25; every run to the 10000-episode cap, none solved by CK's criterion (trailing-100 ≥ 200):
+
+| Arm | last-100 median (mean) | AUC-3000 | Shift vs `base_ck` [CI] | Holm | Verdict | Actor spikes to decision |
+| --- | --- | --- | --- | --- | --- | --- |
+| `base_ck` (CK softmax, reference) | 49.9 (54.1) | −61.9 | ref | | | 467 |
+| `base_race_e` (race, no columns) | 76.8 (76.2) | −62.0 | **+23.8 [+12.1, +32.3]** | 1e-4 | **improves** | 146 |
+| `cols_lam0_race_e` (+ implicit columns) | 90.5 (96.9) | −63.0 | **+41.1 [+30.9, +51.6]** | 2e-6 | **improves** | 138 |
+| `cols_on_race_e` (+ learned columns) | 89.5 (90.2) | −64.6 | **+37.6 [+27.4, +46.5]** | 3e-6 | **improves** | 140 |
+| `cols_sealed_race_e` (+ sealed columns) | 88.7 (89.9) | −70.7 | **+35.9 [+25.6, +46.3]** | 3e-6 | **improves** | 136 |
+
+Secondary: sealed vs no columns +13.2 [+5.1, +21.5] (Holm 0.011); learned vs no columns +13.5 [+6.0, +22.3] (Holm 0.005); sealed vs implicit −5.2 and learned vs implicit −3.1 (n.s.).
+
+- **The reported LunarLander result:** every race arm beats the published backbone after Holm, the race alone by 24 last-100 points and the column arms by 36–41, with early learning level (AUC over the first 3000 episodes within 9 points) and about 30 % of the backbone's actor spikes per decision (136–146 vs 467). Columns improve the race further (learned and sealed both above the race without columns after Holm); the three regimes do not differ among themselves here (implicit highest by a few points, n.s.), unlike CartPole and Acrobot where sealed led. The pre-registered expectations held for the direction and size of the column gains and the energy saving; the race without columns came out above the backbone rather than level.
+- **Across the three reported race studies:** columns under the race beat the backbone on CartPole (+25 to +45 AUC) and LunarLander (+36 to +41 last-100) and keep it on Acrobot (sealed +13, non-inferior); columns beat the race without them on all three tasks (sealed after Holm on all three); the race saves actor spikes per decision on CartPole and LunarLander (about a third of the backbone's) and not on Acrobot. Weight-saving reproduction of all 100 runs launched at 20:14 EDT (one wave at 100 workers, about 10 h).
