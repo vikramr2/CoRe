@@ -91,4 +91,4 @@ python models/verify.py race-acrobot     # the returns match the reported runs e
 New final studies are declared in `experiments/report.py` and launched with `python -m experiments.report run
 <study> --workers N`, which writes only into `reports/<study>/`.
 
-`CLAUDE.md` lists the other experiment scripts and the repository's conventions.
+<!-- `CLAUDE.md` lists the other experiment scripts and the repository's conventions. -->
