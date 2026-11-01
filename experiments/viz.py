@@ -47,6 +47,7 @@ from mapstdp import tdstdp as td
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 VIZ_SEED, CAUSE_SEED, WALK_SEED, ENV_SEED0 = 8101, 8102, 8103, 1000
 M_WALKERS, MAX_EDGES = 32, 800
+OUT_TOP_INPUT = 6  # race input neurons project to every post: the page lists each one's strongest per population
 # response kernels (lagged excess spikes per presynaptic spike, regressed on the kick; preliminary, one model each)
 K_LIF = np.array([1.0, .254, .152, .089, .056, .041, .025, .016, .011, .005])  # lags 1..10 x 0.5 ms, shape;
 #                                                       models/emergent-v4/CartPole_lif_on/s2017.npz
@@ -298,8 +299,9 @@ def record_v4(model, run=None, tries=10, max_frames=None):
             d["grid"], d["grid_labels"] = [6, 6], ["θ", "θ̇"]
         modules.append(d)
     T = a.W / a.W.sum(0)
-    cross = (a.m[:, None] != a.m[None, :]) & (a.W > 0)
-    edges = top_edges([(i, j, T[i, j]) for i, j in zip(*np.nonzero(cross))], MAX_EDGES)
+    edges = top_edges([(i, j, T[i, j]) for i, j in zip(*np.nonzero(a.W > 0))], MAX_EDGES)  # within and between
+    nc = a.roles[a.m] != "C"  # latents' and actions' outflow leaving their module (the controller's always leaves)
+    recur = dict(cross=round(float(T[:, nc][a.m[:, None] != a.m[nc][None, :]].sum() / nc.sum()), 4))
     returns = rec.get("returns", [])
     train = dict(frozen_mean=float(np.mean(rec["frozen_returns"])) if rec.get("frozen_returns") else None,
                  last100=float(np.mean(returns[-100:])) if returns else None,
@@ -310,8 +312,9 @@ def record_v4(model, run=None, tries=10, max_frames=None):
     return dict(id=f"v4-{task}-{eng}-{arm}".lower(), task=task, family="v4", engine=eng, arm=arm,
                 label=f"v4 · {ENG_LABEL[eng]} · {V4_ARM.get(arm, arm)}", seed=int(a.cfg.seed),
                 model=str(model.relative_to(ROOT)) if model.is_absolute() else str(model), dt_ms=dt, k=int(k_),
-                burn=0 if eng == "flow" else int(a.burn), modules=modules, m=a.m.tolist(), edges=edges,
-                actions=ACTIONS[task], note=NOTES[eng] + ("" if eng == "flow" else HEAD_NOTE.format(H=a.heads)),
+                burn=0 if eng == "flow" else int(a.burn), modules=modules, m=a.m.tolist(), edges=edges, rec=recur,
+                out=out_lists(T), out_unit="share of the neuron's output, T_ij = W_ij / d_j", actions=ACTIONS[task],
+                note=NOTES[eng] + ("" if eng == "flow" else HEAD_NOTE.format(H=a.heads)),
                 shares=shares(cnt), **{"return": R}, train=train, env={}, frames=frames, env_seed=ENV_SEED0 + k)
 
 
@@ -347,6 +350,19 @@ RACE_NOTE_BASE = ("No recurrence, so there are no walk steps: every post spike i
 def shares(cnt):
     tot = max(cnt.sum(), 1)
     return {k: round(float(c / tot), 4) for k, c in zip(("walk", "stim", "none"), cnt)}
+
+
+def out_lists(B, top=None, pre=None, post=None):
+    """Each neuron's outgoing synapses [[post, w], ...] from B (post x pre, the page's neuron indices via pre/post),
+    strongest first; top keeps only the strongest top per neuron."""
+    pre = np.arange(B.shape[1]) if pre is None else pre
+    post = np.arange(B.shape[0]) if post is None else post
+    out = {}
+    for c, j in enumerate(pre):
+        i = np.flatnonzero(B[:, c] > 0)
+        i = i[np.argsort(-B[i, c])][:top]
+        out[int(j)] = [[int(post[q]), float(f"{B[q, c]:.4g}")] for q in i]
+    return out
 
 
 def top_edges(cands, n):
@@ -526,7 +542,7 @@ def input_grid(cfg, n_in):
         k = cfg.f_order + 1
         return [k * k, k * k], ["θ · θ̇ order", "x · ẋ order"]
     per = n_in // cfg.in_rep  # [cos]+ per dim, [-cos]+ per dim, bias; repeated in_rep times
-    return [cfg.in_rep, per], ["repeat", "feature (cos+ per dim, cos− per dim, bias)"]
+    return [cfg.in_rep, per], ["copy", "feature"]
 
 
 def record_race(model, tries=10, max_frames=None):
@@ -557,15 +573,26 @@ def record_race(model, tries=10, max_frames=None):
         if n:
             m += [len(modules)] * n
             modules.append(dict(name=name, role=role, action=act, grid=None, grid_labels=None))
-    edges = []
-    if r.hr is not None:
+    edges, recur = [], None
+    if r.hr is not None:  # the recurrent kicks, within and between columns, ranked together
         b = r.hr.b()
-        cr = [(n_in + int(r.hr.ridx[i]), n_in + int(r.hr.ridx[j]), b[i, j])
-              for i, j in zip(*np.nonzero((r.hr.m[:, None] != r.hr.m[None, :]) & (b > 0)))]
-        edges = top_edges(cr, MAX_EDGES // 2)
-    Win = cfg.s_in / td.THETA_L * r.W
-    ci = [(n_in + i, j, Win[i, j]) for i, j in zip(*np.nonzero(Win > 0))]
-    edges += top_edges(ci, MAX_EDGES - len(edges))
+        rr = [(n_in + int(r.hr.ridx[i]), n_in + int(r.hr.ridx[j]), b[i, j]) for i, j in zip(*np.nonzero(b > 0))]
+        edges = top_edges(rr, MAX_EDGES)
+        recur = dict(cross=round(float(b[r.hr.m[:, None] != r.hr.m[None, :]].sum() / b.sum()), 4))
+    # input -> module bundles: each post module's mean summed input weight, normalised to max 1
+    Wk = cfg.s_in / td.THETA_L * r.W  # threshold units per input spike, as the recurrent kicks
+    mods = np.array(m[n_in:])
+    syn = {j: [] for j in range(n_in)}
+    for q in np.unique(mods):
+        for j, v in out_lists(Wk[mods == q], OUT_TOP_INPUT, post=n_in + np.flatnonzero(mods == q)).items():
+            syn[j] += v
+    syn = {j: sorted(v, key=lambda e: -e[1]) for j, v in syn.items()}
+    if r.hr is not None:
+        syn |= out_lists(r.hr.b(), pre=n_in + r.hr.ridx, post=n_in + r.hr.ridx)
+    Win = Wk.sum(1)
+    tot = {int(k): float(Win[mods == k].mean()) for k in np.unique(mods)}
+    mx = max(tot.values())
+    bundles = [[0, k, round(v / mx, 3)] for k, v in tot.items()]
     run = ROOT / "reports" / model.parent.parent.name / "runs" / model.parent.name / (model.stem + ".json")
     train = {}
     if run.exists():
@@ -580,9 +607,10 @@ def record_race(model, tries=10, max_frames=None):
     out = dict(id=f"race-{task}-nlif-{arm}".lower(), task=task, family="race", engine="nlif", arm=arm,
                label=f"TD-STDP · {RACE_ARM.get(key, arm)}", seed=int(cfg.seed),
                model=str(model.relative_to(ROOT)) if model.is_absolute() else str(model), dt_ms=r.lp.dt * 1e3,
-               k=tdstdp.MS, burn=0, modules=modules, m=m, edges=edges, actions=ACTIONS[task], note=note,
-               shares=shares(cnt), **{"return": R}, train=train, env=envd or {}, inp_max=inp_max, frames=frames,
-               env_seed=ENV_SEED0 + k)
+               k=tdstdp.MS, burn=0, modules=modules, m=m, edges=edges, bundles=bundles, rec=recur, out=syn,
+               out_unit="kick per spike, in units of the threshold", out_top={"0": OUT_TOP_INPUT},
+               actions=ACTIONS[task], note=note, shares=shares(cnt), **{"return": R}, train=train, env=envd or {},
+               inp_max=inp_max, frames=frames, env_seed=ENV_SEED0 + k)
     return out
 
 

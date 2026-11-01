@@ -100,3 +100,18 @@ def test_schema(eng):
         else:
             assert "inp" not in fr
     assert (out["family"] == "race") == ("inp_max" in out) and out.get("inp_max", 1) > 0
+    out_n = {int(j): v for j, v in out["out"].items()}  # each neuron's outgoing synapses, strongest first
+    assert all(0 <= j < len(out["m"]) and all(0 <= i < len(out["m"]) and w > 0 for i, w in v) for j, v in out_n.items())
+    assert all([w for _, w in v] == sorted((w for _, w in v), reverse=True) for v in out_n.values())
+    assert 0 <= out["rec"]["cross"] <= 1 and any(out["m"][e[0]] == out["m"][e[1]] for e in out["edges"])
+    if out["family"] == "race":  # one input bundle per post module; recurrent edges only among actor posts
+        assert sorted(b[1] for b in out["bundles"]) == list(range(1, len(out["modules"])))
+        assert all(b[0] == 0 and 0 < b[2] <= 1 for b in out["bundles"]) and max(b[2] for b in out["bundles"]) == 1
+        acts = {n for n, q in enumerate(out["m"]) if out["modules"][q]["role"] == "act"}
+        assert out["edges"] and all(e[0] in acts and e[1] in acts for e in out["edges"])
+        assert 0 < out["rec"]["cross"] < 1
+        n_in = out["m"].count(0)
+        for j in range(n_in):  # inputs: at most the strongest OUT_TOP_INPUT targets in each population
+            per = np.bincount([out["m"][i] for i, _ in out_n[j]], minlength=len(out["modules"]))
+            assert per[0] == 0 and per.max() <= viz.OUT_TOP_INPUT
+        assert any(out["m"][e[0]] == out["m"][e[1]] for e in out["edges"])  # within-column recurrence is drawn

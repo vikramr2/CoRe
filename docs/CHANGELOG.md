@@ -1,5 +1,26 @@
 # Changelog
 
+## 2026-11-01
+
+### Changed: the walk replay's layout, within-module synapses and a per-neuron synapse view (user request)
+
+- **Layout:** the inputs (or v4's controller) and the critic sit small at the top left. The action groups and latents sit on a ring: a pair, a triangle (Acrobot) or a square (LunarLander, v4). Each action's I population sits beside its E column.
+- **Input wiring (race models):** a band runs from the inputs to every critic and actor population. Its width is the population's mean summed input weight (`bundles` in the data). Under the critic, a note says that it has no synapses to the actor and that its TD error δ drives only learning.
+- **Fix:**
+  - **Problem:** the race models drew only the recurrent synapses between columns. Sealed columns therefore looked like the feed-forward CK actor.
+  - **Change:** the strongest recurrent kicks within and between columns are now drawn together, ranked by weight. The ring's centre states the share of recurrent drive that crosses columns (`rec.cross`; "no recurrent synapses" on the base arms).
+  - **Shares on the best models:**
+    - CartPole: implicit columns 0.09%, map term on 0.08%.
+    - Acrobot: implicit 31%, map term on 0.19%.
+    - LunarLander: implicit 58%, map term on 0.43%.
+- **Inspecting one neuron:** hovering over a neuron draws only its outgoing synapses, with line width proportional to each synapse's weight. Clicking pins the neuron (Esc clears it), and `#<model>@<neuron>` links to a pinned neuron. A line under the legend gives the neuron's target count, its strongest synapse and its output summed by module.
+  - Recorded per neuron (`out`): v4 stores every synapse as T_ij. Race models store every recurrent kick and, for each input neuron, its 6 strongest targets in each population (`OUT_TOP_INPUT`), in threshold units per spike.
+- **v4 within-module synapses** are now drawn, ranked together with the cross-module ones. The ring's centre gives the share of latent and action output that leaves its module (`rec.cross`; the controller's output always leaves):
+  - map term off: 24–39%;
+  - map term on: 0.4–2.4%;
+  - sealed: 0.
+- The 28 recordings were rebuilt; their episodes are unchanged (same returns, frame counts and environment seeds). `tests/test_viz.py` checks the bundles, the within-module edges and the synapse lists.
+
 ## 2026-10-31
 
 ### Added: the walk replay of the best models, `experiments/viz.py` and `viz_template.html` (user request)
