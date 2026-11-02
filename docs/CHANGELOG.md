@@ -2,6 +2,21 @@
 
 ## 2026-11-01
 
+### Added: `--p-cross` on the TD-STDP runner and the iteration 018 pre-registration (user request)
+
+- **Question.** Sealed beats implicit columns on CartPole and Acrobot, but not on LunarLander. The user asked whether each task has a best level of cross-column wiring in between.
+- **The flag.** `experiments/tdstdp.py` gains `Config.p_cross` and `--p-cross`, with token `px<p>`. It sets R's cross-module connection probability in `HybridRec`'s SBM. That probability was hard-wired at 0.05, with 0.5 within a column.
+  - The default keeps every name, draw and result.
+  - `--p-cross 0` gives `--rec-seal`'s R exactly.
+  - For one seed the masks are nested in p_cross, with the same within-column draws.
+  - `calibrate_rec` now measures on the default draws (p_cross 0.05), so η_rec and λ_rec do not depend on the point.
+  - Test: `tests/test_hybrid.py::test_rec_p_cross_sweep`.
+- **The design.** `docs/iterations/018-cross-wiring-sweep.md`, pre-registered before any run.
+  - Dev stage: `cols_lam0` with each task's race-study flags at p_cross ∈ {0, 0.0125, 0.025, 0.05, 0.1, 0.2, 0.5}, on dev seeds 20–29.
+  - p* per task is the argmax of the dev mean primary metric.
+  - Then the study `cross-sweep` on fresh seeds: p* vs sealed vs implicit, with `base_ck` as the reference.
+- **Finding while setting up.** "Implicit" (p_cross 0.05) already starts nearly sealed: 9–23 % of a neuron's initial outflow crosses columns, depending on the task. Its large learned crossing shares are learned weight on a few cross synapses.
+
 ### Changed: the replay pages' styles moved to their own files (user request)
 
 - Each page's inline `<style>` is now a stylesheet:

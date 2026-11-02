@@ -37,7 +37,8 @@ latent modules of n_ae posts ('lat'; input->latent W frozen at init, latent->act
 off with --lam 0) with d_j homeostasis; the counter's gain is the kernel's own transfer (lif.gain_markov). eta_rec and
 lam_rec are pre-set by calibrate_rec unless given (--eta-rec, --lam-rec); s_in and --eta-cal are calibrated without
 recurrence, so every arm of a seed shares them. --rec-seal drops R's cross-module synapses from the same draws
-(enforced modularity). Tokens after the engine: cols | lat, xr<chi_rec>, seal, lam0 | lam<l>,
+(enforced modularity); --p-cross sets R's cross-module connection probability (0.05; within 0.5; iteration 018),
+0 being the sealed graph. Tokens after the engine: cols | lat, xr<chi_rec>, seal, px<p_cross>, lam0 | lam<l>,
 lr<lam_ratio>, lx<lam_rec>, er<eta_rec>, sw<stat_windows>, pw<pair_ms>, nl<n_lat_mod>, lb<la_beta> (off-default
 only, except the first two). The result's 'rec' holds the calibration and the monitors (HybridRec.log, one row per
 pooled-episode event); --save-model PATH writes R snapshots (episode 0, every SNAP_EVERY, end) with m, roles, mask.
@@ -186,6 +187,7 @@ class Config:
     n_lat_mod: int = 2  # rec 'lat': latent modules of n_ae posts each (input->latent W frozen at init)
     la_beta: float = 0.3  # rec 'lat': latent-output barrier (core.latent_output_barrier)
     rec_seal: bool = False  # enforced modularity: R without cross-module synapses (same draws; iteration 015)
+    p_cross: float = 0.05  # R's cross-module connection probability (within: 0.5); 0 = rec_seal (iteration 018)
     # iteration 016: tasks without the authors' configs
     onehot: bool = False  # ck_encoder: one-hot of a Discrete observation (n states), repeated in_rep times
     r_ck_hz: float = 0.0  # calibrate_low: k = r_ck_hz / rate_target (0 = BindsNET's rate measured on this task)
@@ -281,6 +283,7 @@ def tokens(cfg):
     if cfg.rec != "none":
         d = Config()
         t += [cfg.rec, f"xr{cfg.chi_rec:g}"] + (["seal"] if cfg.rec_seal else [])
+        t += [f"px{cfg.p_cross:g}"] if cfg.p_cross != d.p_cross else []
         t += ["lam0"] if cfg.lam == 0 else [f"lam{cfg.lam:g}"] if cfg.lam != 1 else []
         t += [f"lr{cfg.lam_ratio:g}"] if cfg.lam_ratio != d.lam_ratio else []
         t += [f"lx{cfg.lam_rec:g}"] if cfg.lam_rec else []
@@ -599,7 +602,7 @@ class CKRunner:
         if cfg.rec != "none":
             self.hr = td.HybridRec(lay, K, cfg.n_ae, cfg.n_lat_mod if n_lat else 0, cfg.chi_rec, self.lp, H,
                                    (*rs, 2), cfg.stat_windows, cfg.pair_ms, cfg.lam * cfg.lam_rec,
-                                   cfg.la_beta if n_lat else 0.0, seal=cfg.rec_seal)
+                                   cfg.la_beta if n_lat else 0.0, p_cross=cfg.p_cross, seal=cfg.rec_seal)
             self.hs = np.zeros((H, self.hr.Kr))  # module scores of the window's credit
             self.snaps = {0: self.hr.R.copy()}
             self.snaps_kc = {}  # per snapshot: HybridRec.class_table() of the pairs since the previous snapshot
@@ -1259,10 +1262,11 @@ def calibrate_rec(cfg):
     (seed, CAL_SEED) stream, over CAL_TICKS windows after the first WARM_N + 1: eta_rec gives R the actor W's relative
     step per window, eta_a RMS(g_actor) / RMS(W_actor) = eta_rec RMS(u) / RMS(R) (u = mean_h (sum_t delta) e_h, the
     task direction of a window; RMS over existing synapses); lam_rec = lam_ratio RMS(eta_rec x u summed over a frame) /
-    RMS(structural increment of a frame) (lam = 1). Measured on the unsealed draws (rec_seal off), so every arm of a
-    seed shares the rates: with sealed R every target of j is in m(j), the one-hop credit h_m(i) - hbar_j is exactly 0,
-    and RMS(u) is rounding noise. Returns (eta_rec, lam_rec, dict of the RMS values)."""
-    r = CKRunner(dataclasses.replace(cfg, adam=False, sgd=False, eta_rec=1.0, lam_rec=0.0, rec_seal=False),
+    RMS(structural increment of a frame) (lam = 1). Measured on the unsealed default draws (rec_seal off, p_cross
+    0.05), so every arm of a seed shares the rates: with sealed R every target of j is in m(j), the one-hop credit
+    h_m(i) - hbar_j is exactly 0, and RMS(u) is rounding noise. Returns (eta_rec, lam_rec, dict of the RMS values)."""
+    r = CKRunner(dataclasses.replace(cfg, adam=False, sgd=False, eta_rec=1.0, lam_rec=0.0, rec_seal=False,
+                                     p_cross=Config().p_cross),
                  rng_seed=CAL_SEED, frozen=True)
     for _ in range(WARM_N + 1):
         r.tick()
@@ -1655,6 +1659,7 @@ def main():
     ap.add_argument("--rec", choices=("none", "cols", "lat"), default="none",
                     help="nlif: recurrent E->E actor modules (iteration 015): cols, one per action; lat, + latents")
     for f, t, h in (("chi-rec", float, "rec: total kick per spike (threshold units)"),
+                    ("p-cross", float, "rec: R's cross-module connection probability (0.05; 0 = --rec-seal)"),
                     ("lam", float, "rec: map term multiplier (0 = off)"),
                     ("lam-ratio", float, "rec: lam_rec = ratio x RMS(task step) / RMS(structural step)"),
                     ("lam-rec", float, "rec: structural rate (default: calibrate_rec)"),
@@ -1695,7 +1700,7 @@ def main():
     if a.fast:
         kw["fast"] = True
     kw.update({k: v for k, v in (("rate_target", a.rate_target), ("c_t", a.rate_cost), ("rate_floor", a.rate_floor),
-                                 ("chi_rec", a.chi_rec),
+                                 ("chi_rec", a.chi_rec), ("p_cross", a.p_cross),
                                  ("beta_c", a.beta_c), ("eta_mult_a", a.eta_mult_a), ("race_fit_gate", a.race_fit_gate),
                                  ("lam", a.lam), ("lam_ratio", a.lam_ratio),
                                  ("lam_rec", a.lam_rec), ("eta_rec", a.eta_rec), ("stat_windows", a.stat_windows),

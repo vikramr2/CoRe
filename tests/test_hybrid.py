@@ -78,6 +78,23 @@ def test_rec_seal_drops_cross_module_synapses():
     assert cal[0][:2] == cal[1][:2] and cal[0][2]["rms_u"] > 1e-6
 
 
+def test_rec_p_cross_sweep():
+    """--p-cross (iteration 018): 0 is --rec-seal's R; the masks of one seed are nested in p_cross with the same
+    within-module draws; the default keeps the name; calibrate_rec's rates do not depend on p_cross."""
+    hr = {p: ex.CKRunner(_rec_cfg(rec="cols", eta_rec=1.0, lam_rec=1.0, p_cross=p)).hr for p in (0.0, 0.05, 0.2, 0.5)}
+    seal = ex.CKRunner(_rec_cfg(rec="cols", eta_rec=1.0, lam_rec=1.0, rec_seal=True)).hr
+    assert np.array_equal(hr[0.0].mask, seal.mask) and np.array_equal(hr[0.0].R, seal.R)
+    same = hr[0.5].m[:, None] == hr[0.5].m[None, :]
+    ps = sorted(hr)
+    for a, b in zip(ps, ps[1:]):
+        assert np.array_equal(hr[a].mask & same, hr[b].mask & same)
+        assert (hr[b].mask | ~hr[a].mask).all() and hr[b].mask.sum() > hr[a].mask.sum()
+    assert ex.tokens(_rec_cfg(rec="cols")) == ex.tokens(_rec_cfg(rec="cols", p_cross=0.05))
+    assert "px0.2" in ex.tokens(_rec_cfg(rec="cols", p_cross=0.2))
+    cal = [ex.calibrate_rec(_rec_cfg(rec="cols", p_cross=p)) for p in (0.05, 0.5)]
+    assert cal[0][:2] == cal[1][:2]
+
+
 @pytest.mark.parametrize("heads", [1, 3])
 def test_rec_chi0_equals_nlif(heads):
     """(h2) rec 'cols' with chi_rec = 0 (kicks of zero) is the nlif baseline bit for bit: same raster, W, returns and
