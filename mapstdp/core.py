@@ -2,7 +2,7 @@
 
 Conventions (docs/derivation.md): W[i, j] is the synapse pre j -> post i, T = W / d with
 d_j = sum_i W[i, j], J[i, j] = pi_j T[i, j], module tables are indexed [b, a] = (post module, pre module).
-Logs are base 2 (bits). Task term: action-gated eligibility (Eq. 4b) here; TD critic in experiments/m2.py.
+Logs are base 2 (bits). Task term: action-gated eligibility (Eq. 4b) here; TD critic in models/basic.py.
 """
 import itertools
 
@@ -16,7 +16,7 @@ def build_network(sizes=(16, 16, 16, 16, 16), roles="CLLAA", p_same=0.5, p_cc=0.
     rng = np.random.default_rng(seed)
     m = np.repeat(np.arange(len(sizes)), sizes)
     roles = np.array(list(roles))
-    P = np.full((len(sizes),) * 2, p_cross)
+    P = np.full((len(sizes),) * 2, float(p_cross))
     np.fill_diagonal(P, p_same)
     P[route_pairs(roles)] = p_route
     c = int(np.flatnonzero(roles == "C")[0])
@@ -137,7 +137,8 @@ def mstar(p, q, clip=20.0):
 
 def modulator(p, q, roles, clip=20.0, routing="none", mu=0.0):
     """K x K table g[b, a] = M*_a I[b != a] (Eq. 6). routing: 'none' | 'exempt' (g = 0 on routing
-    pairs) | 'dual' (subtract mu on routing pairs, Eq. 4a). Both routing options are Proposals."""
+    pairs) | 'dual' (subtract mu on routing pairs, Eq. 4a). 'exempt' is the agent's default
+    (m2.Config, derivation §4.5); 'dual' is an m1-only ablation."""
     g = mstar(p, q, clip)[None, :] * (1 - np.eye(len(p)))
     if routing == "exempt":
         g[route_pairs(roles)] = 0.0
@@ -181,6 +182,11 @@ def action_score(W, pi, m, roles, a, beta=1.0):
     K x K table tab[b, a'] = h_b, ready for centered()."""
     K, A = len(roles), roles == "A"
     Jin = np.bincount(m, (W / W.sum(0) * pi).sum(1), K)
+    return _score_table(Jin, K, A, a, beta)
+
+
+def _score_table(Jin, K, A, a, beta):
+    """The K x K score table of action_score from the module inflows J^in (shared by Eqs. 4b and the emergent 4b)."""
     P = np.zeros(K)
     P[A] = Jin[A] ** beta / (Jin[A] ** beta).sum()
     h = np.where(A, -beta * P / np.where(A, Jin, 1.0), 0.0)
@@ -201,7 +207,7 @@ def action_entropy(W, pi, m, roles):
 
 
 def entropy_score(W, pi, m, roles):
-    """Entropy modulator (iteration 012 C1, Proposal) as a K x K table tab[b, a'] = g_b / J^in_b with
+    """Entropy modulator (Eq. 4h, iteration 012, Proposal) as a K x K table tab[b, a'] = g_b / J^in_b with
     g_b = -P~(b) (log P~(b) - sum_a P~(a) log P~(a)) on action modules, 0 elsewhere (P~: beta = 1 shares).
     centered(tab) * kappa with kappa = J averages to W * dH(P~)/dW, pi fixed (self-check)."""
     K, A = len(roles), roles == "A"
@@ -209,18 +215,6 @@ def entropy_score(W, pi, m, roles):
     P = Jin[A] / Jin[A].sum()
     h = np.zeros(K)
     h[A] = -P * (np.log(P) - (P * np.log(P)).sum()) / Jin[A]
-    return np.repeat(h[:, None], K, 1)
-
-
-def usage_score(W, pi, m, roles, ubar):
-    """Usage homeostasis modulator (iteration 012 C2, Proposal): tab[b, a'] = (ubar_b - 1/|A|) / J^in_b on action
-    modules (ubar: running average of the beta = 1 action shares, length |A|), 0 elsewhere. The update is
-    -centered(tab) * kappa, whose average (kappa = J) is -W * d/dW sum_b (ubar_b - 1/|A|) log J^in_b, ubar and pi
-    fixed."""
-    K, A = len(roles), roles == "A"
-    Jin = action_inflow(W, pi, m, K)
-    h = np.zeros(K)
-    h[A] = (np.asarray(ubar) - 1 / A.sum()) / Jin[A]
     return np.repeat(h[:, None], K, 1)
 
 
@@ -259,6 +253,195 @@ def grad_L(W, pi, m, K):
 def sample_pairings(J, n, rng):
     """n causal pairings drawn with probability proportional to J_ij (mean-field assumption)."""
     return rng.multinomial(n, (J / J.sum()).ravel()).reshape(J.shape).astype(float)
+
+
+# ---- emergent walk (Eqs. 8-12): the walk observed from spikes, a signed counter for the step ----------------------
+# Every statistic of the rule is needed only at module resolution: R[b, j] = sum_{i in b} kappa_ij (K x N, j's pair
+# counts by target module: a per-neuron count of a K-number module-activity broadcast, derivation Eq. 8). The
+# baselines, M*, e^obs and the running averages (obs_tau, models/basic.py) therefore need no per-synapse state.
+
+
+def module_rows(X, m, K):
+    """K x N aggregate of an N x N [post, pre] matrix over postsynaptic modules: [b, j] = sum_{i in b} X[i, j]."""
+    return np.eye(K)[m].T @ X
+
+
+def observed_walk_modules(R, pi, m, K, fallback=None):
+    """Eq. 8 at module resolution. R: K x N pair counts by target module (any normalisation; module_rows of kappa_raw,
+    or a running average of it). Returns p, q, JK[b, a] (module link flow of J^obs_ij = pi_j T^obs_ij), tK (K x N,
+    tK[b, j] = sum_{i in b} T^obs_ij) and e_obs (N, the exit share of j's observed transitions). Columns with no counts
+    (a silent j, or one whose spikes nobody followed; 0/0) take fallback[:, j] (e.g. module_rows of T), else 0."""
+    tot = R.sum(0)
+    live = tot > 0
+    tK = np.where(live, R / np.where(live, tot, 1.0), 0.0)
+    if fallback is not None:
+        tK[:, ~live] = fallback[:, ~live]
+    JK = (tK * pi) @ np.eye(K)[m]
+    p = np.bincount(m, pi, K)
+    q = JK.sum(0) - np.diag(JK)
+    return p, q, JK, tK, tK.sum(0) - tK[m, np.arange(len(m))]
+
+
+def observed_walk(kappa_raw, pi, m, K, fallback=None):
+    """Eq. 8, the observed walk: T^obs = kappa_raw / column sums, J^obs = pi_j T^obs_ij, module tables p, q, JK as
+    module_stats, e_obs_j = sum_{i not in m(j)} T^obs_ij. Silent columns (0/0) take fallback[:, j] (an N x N
+    column-stochastic matrix, e.g. T), else 0. Returns J^obs, p, q, JK, T^obs, e_obs. With kappa_raw = J (flow) it is
+    module_stats(W, pi) exactly in exact arithmetic (T^obs = T, derivation: the flow engine is the a = X = 0 case)."""
+    tot = kappa_raw.sum(0)
+    live = tot > 0
+    Tobs = np.where(live, kappa_raw / np.where(live, tot, 1.0), 0.0)
+    if fallback is not None:
+        Tobs[:, ~live] = fallback[:, ~live]
+    Jobs = Tobs * pi
+    H = np.eye(K)[m]
+    JK = H.T @ Jobs @ H
+    p = H.T @ pi
+    q = JK.sum(0) - np.diag(JK)
+    return Jobs, p, q, JK, Tobs, (Tobs * (m[:, None] != m[None, :])).sum(0)
+
+
+def centered_walk(tab, tK, m):
+    """tab[m(i), m(j)] - gbar_j with the observed-walk baseline gbar_j = sum_k T^obs_kj tab[m(k), m(j)]
+    = sum_b tK[b, j] tab[b, m(j)] (Eq. 4; centered() with T^obs in place of T). tK: K x N module shares of T^obs."""
+    return tab[m][:, m] - (tK * tab[:, m]).sum(0)
+
+
+def structural_increment_emergent(g, tK, c, m):
+    """Eq. 4 without the rate: -(g_ij - gbar^obs_j) c_ij (structural_update_emergent adds lam times this and clips)."""
+    return -centered_walk(g, tK, m) * c
+
+
+def structural_update_emergent(W, mask, g, tK, c, m, lam, wmin=1e-3, wmax=1.0):
+    """Eq. 4 (Theorem E, Eq. 10: it descends D): W += -lam (g_ij - gbar^obs_j) c_ij, then mask and bounds. For the map
+    table g = M*_a I[b != a] this is -lam M*_{m(j)} (I[i not in m(j)] - e^obs_j) c_ij. c: the signed counter
+    (Eq. 11a/11b), per frame divided by the frame's spikes; tK: module shares of the observed walk
+    (observed_walk_modules)."""
+    return clip_weights(W + lam * structural_increment_emergent(g, tK, c, m), mask, wmin, wmax)
+
+
+def homeostasis_update_emergent(W, mask, pi, eps_h, wmin=1e-3, wmax=1.0):
+    """Eq. 4d: W -= eps_h (d_j - 1) W_ij pi_j / d_j, pi_j = n_j / total spikes (flow: the flow). An exact column
+    rescaling, so T, the walk and L are unchanged; written in homeostasis_update's operation order so that pi = flow
+    gives its result bit for bit (kappa = J there)."""
+    return clip_weights(W - eps_h * (W.sum(0) - 1) * (W / W.sum(0) * pi), mask, wmin, wmax)
+
+
+def score_table_obs(JK, roles, a, beta=1.0):
+    """The Eq. 4b score table (action_score) from the observed walk's module inflow J^in_b = sum_a JK[b, a]. Guarded for
+    spiking frames: h_b = 0 where J^in_b = 0 (a silent action module), and all 0 if every action module is silent."""
+    K, A = len(roles), roles == "A"
+    Jin = JK.sum(1)
+    if (Jin[A] > 0).all():
+        return _score_table(Jin, K, A, a, beta)
+    h = np.zeros(K)
+    if Jin[A].sum() > 0:
+        P = np.where(A, np.maximum(Jin, 0) ** beta, 0.0)
+        P /= P.sum()
+        live = A & (Jin > 0)
+        h[live] = -beta * P[live] / Jin[live]
+        if Jin[a] > 0:
+            h[a] += beta / Jin[a]
+    return np.repeat(h[:, None], K, 1)
+
+
+def eligibility_step_emergent(e, c, JK, tK, m, roles, a, tau_e=3.0, beta=1.0):
+    """Eq. 4b with the signed counter: e <- (1 - 1/tau_e) e + c_ij (h_m(i) - hbar^obs_j), h from the observed walk's
+    module inflow (score_table_obs), hbar^obs_j = sum_k T^obs_kj h_m(k) (one-hop credit, the analogue of Lemma E for
+    log P; derivation Eq. 4b)."""
+    return (1 - 1 / tau_e) * e + c * centered_walk(score_table_obs(JK, roles, a, beta), tK, m)
+
+
+def module_offspring(c, p, m, K):
+    """Eq. 12 monitor: Lambda^K[b, a] = sum_{i in b, j in a} c_ij / (spikes of a), from c divided by the frame's spikes
+    (so the spikes of a are p_a in the same units); columns of silent modules are 0. Returns (Lambda^K, spectral
+    radius max |lambda|)."""
+    CK = module_rows(c, m, K) @ np.eye(K)[m]
+    L = np.where(p > 0, CK / np.where(p > 0, p, 1.0), 0.0)
+    return L, float(np.abs(np.linalg.eigvals(L)).max())
+
+
+def mstar_ceiling(p, q, q_chance, clip=20.0):
+    """M* with the module exit rate at its chance floor q_chance (derivation D2 step 5):
+    log2(q_tot (p + q) / q_chance^2), the largest M* the chance coincidences allow in an excitatory
+    network; clipped to [0, clip]."""
+    with np.errstate(divide="ignore", invalid="ignore"):
+        M = np.log2(q.sum() * (p + q) / q_chance ** 2)
+    return np.clip(np.nan_to_num(M, nan=clip, posinf=clip), 0, clip)
+
+
+def lemma_e_grad(W, E, h, pi, m, K, sgn=None, clip=np.inf):
+    """Eq. 9 (Lemma E): dL/dW_ij of the map equation of the observed walk T^obs = E / E_j (pi, the chance and indirect
+    parts of E, and the gains held fixed; the local split), for the walk E_kj = a_k + sgn_j h_k T_kj + X_kj:
+    pi_j sgn_j / (E_j d_j) [h_i (g_ij - gbar^obs_j) - C_j], g_ij = M*_{m(j)} I[i not in m(j)],
+    gbar^obs_j = sum_k T^obs_kj g_kj, C_j = sum_k h_k T_kj (g_kj - gbar^obs_j)."""
+    sgn = np.ones(len(W)) if sgn is None else sgn
+    d, Ej = W.sum(0), E.sum(0)
+    T, Tobs = W / d, E / Ej
+    _, p, q, _, _, _ = observed_walk(E, pi, m, K)
+    g = mstar(p, q, clip)[m][None, :] * (m[:, None] != m[None, :])
+    gbar = (Tobs * g).sum(0)
+    C = (h[:, None] * T * (g - gbar)).sum(0)
+    return pi * sgn / (Ej * d) * (h[:, None] * (g - gbar) - C)
+
+
+def _check_emergent():
+    """Self-check of Eqs. 8-10: Lemma E (Eq. 9) against central differences on a 16-neuron E-I network with a chance
+    term and fixed indirect terms (derivation Appendix A, E1); Theorem E's expected update (E[c] = pi_j sgn_j h_i T_ij)
+    against -E_j W * grad L after removing the column rescaling (E2); and the flow case (kappa_raw = c = J): the
+    emergent functions reproduce the v4 functions to 1e-12. Returns (Theorem E cosine, Lemma E relative error)."""
+    rng = np.random.default_rng(0)
+    K, n = 4, 4
+    N, m = K * n, np.repeat(np.arange(K), n)
+    sgn = np.tile([1.0, 1.0, 1.0, -1.0], K)
+    same = m[:, None] == m[None, :]
+    W = rng.uniform(0.1, 1, (N, N)) * np.where(same, 2.0, 0.5)
+    np.fill_diagonal(W, 0)
+    off = ~np.eye(N, dtype=bool)
+    h, a, X = rng.lognormal(0, 0.5, N) * 0.3, rng.uniform(0.3, 0.6, N), rng.normal(0, 0.02, (N, N))
+    pi = rng.dirichlet(3 * np.ones(N))
+    Emat = lambda W_: a[:, None] + sgn[None, :] * h[:, None] * W_ / W_.sum(0) + X  # noqa: E731
+    Lobs = lambda W_: map_equation(*observed_walk(Emat(W_), pi, m, K)[1:3], pi)  # noqa: E731
+    gr, eps = lemma_e_grad(W, Emat(W), h, pi, m, K, sgn), 1e-6
+    fd = np.zeros_like(W)
+    for i, j in zip(*np.nonzero(off)):
+        E = np.zeros_like(W)
+        E[i, j] = eps
+        fd[i, j] = (Lobs(W + E) - Lobs(W - E)) / (2 * eps)
+    err = np.abs(fd - gr)[off].max() / np.abs(gr[off]).max()
+    assert err < 1e-5, err
+    assert np.abs((W * gr).sum(0)).max() < 1e-12  # column sums of W * grad L vanish
+    E = Emat(W)
+    _, p, q, JK, Tobs, _ = observed_walk(E, pi, m, K)
+    g = mstar(p, q, np.inf)[None, :] * (1 - np.eye(K))
+    tK = module_rows(Tobs, m, K)
+    Ec = sgn * h[:, None] * W / W.sum(0) * pi  # E[c_ij] per unit time
+    u = -centered_walk(g, tK, m) * Ec * off
+    u = u - W * (u.sum(0) / W.sum(0))  # remove the column rescaling
+    target = -E.sum(0) * W * gr
+    cosE = float(u[off] @ target[off] / np.sqrt((u[off] @ u[off]) * (target[off] @ target[off])))
+    assert cosE > 1 - 1e-10, cosE
+    W, m, roles, mask = build_network((4, 3, 3, 3), "CLAA", p_same=0.8, p_cross=0.2, seed=1)  # flow == v4
+    K, pi = len(roles), flow(W, stimulus(0.3, m, roles), 0.2)
+    J = W / W.sum(0) * pi
+    p0, q0, JK0, _ = module_stats(W, pi, m, K)
+    Jo, p1, q1, JK1, To, eo = observed_walk(J, pi, m, K)
+    p2, q2, JK2, tK2, eo2 = observed_walk_modules(module_rows(J, m, K), pi, m, K)
+    tK = module_rows(To, m, K)
+    for x, y in ((Jo, J), (p1, p0), (q1, q0), (JK1, JK0), (p2, p0), (q2, q0), (JK2, JK0), (tK2, tK), (eo2, eo)):
+        assert np.abs(x - y).max() < 1e-12
+    g = modulator(p0, q0, roles, routing="exempt") - latent_output_barrier(p0, JK0, roles, 0.3)
+    v4 = structural_update(W, mask, g, J, m, 0.05)
+    em = structural_update_emergent(W, mask, g, tK, J, m, 0.05)
+    assert np.abs(v4 - em).max() < 1e-12
+    W13 = W * 1.3
+    assert (homeostasis_update(W13, mask, W13 / W13.sum(0) * pi, 5.0) ==
+            homeostasis_update_emergent(W13, mask, pi, 5.0)).all()  # same operations: bit-identical
+    a = int(np.flatnonzero(roles == "A")[1])
+    for beta in (1.0, 3.0):
+        e4 = eligibility_step(0.5, W, J, pi, m, roles, a, 3.0, beta)
+        ee = eligibility_step_emergent(0.5, J, JK1, tK, m, roles, a, 3.0, beta)
+        assert np.abs(e4 - ee).max() < 1e-12
+    return cosE, float(err)
 
 
 if __name__ == "__main__":  # self-check: Eq. 1a bound, Eq. 7 vs finite differences, Theorem 3 by Monte Carlo
@@ -306,16 +489,12 @@ if __name__ == "__main__":  # self-check: Eq. 1a bound, Eq. 7 vs finite differen
     assert (np.abs(W3.sum(0) - 1) < np.abs(1.5 * W.sum(0) - 1)).all()
     W5, m5, r5, mk5 = build_network((4, 3, 3, 3, 3), "CLAAA", p_same=0.8, p_cross=0.2, seed=2)  # iteration 012
     pi5 = flow(W5, stimulus(0.6, m5, r5), alpha)
-    ub = np.array([0.5, 0.3, 0.2])
-    U = lambda W_: (np.log(action_inflow(W_, pi5, m5, 5)[r5 == "A"]) * (ub - 1 / 3)).sum()  # noqa: E731
     gH = centered(entropy_score(W5, pi5, m5, r5), W5, m5) * pi5 / W5.sum(0)  # Eq. 5 form: dH/dW, pi fixed
-    gU = centered(usage_score(W5, pi5, m5, r5, ub), W5, m5) * pi5 / W5.sum(0)
     for i, j in zip(*np.nonzero(mk5)):
         E = np.zeros_like(W5)
         E[i, j] = h
         assert abs((action_entropy(W5 + E, pi5, m5, r5) - action_entropy(W5 - E, pi5, m5, r5)) / (2 * h) - gH[i, j]) \
             < 1e-6
-        assert abs((U(W5 + E) - U(W5 - E)) / (2 * h) - gU[i, j]) < 1e-6
     Cf = fourier_coeffs(4, 2, 2)
     assert len(Cf) == 32 and fourier_features(np.full(4, 0.5), Cf).min() >= 0
     vf = fourier_stimulus(np.zeros(4), Cf, *build_network((64, 4, 4), "CLA")[1:3])
@@ -323,4 +502,6 @@ if __name__ == "__main__":  # self-check: Eq. 1a bound, Eq. 7 vs finite differen
     Wc, mc, rc, _ = build_network((36, 4, 4), "CLA")
     vc = cartpole_stimulus([0, 0, 0.21, -3.5], mc, rc)  # theta at +max, theta_dot at -max: grid cell (5, 0)
     assert np.isclose(vc.sum(), 1) and vc.argmax() == 30
-    print(f"core self-check ok (Monte Carlo corr with -W*grad = {r:.4f}; Eq. 4b score, homeostasis, encoder)")
+    cosE, errE = _check_emergent()
+    print(f"core self-check ok (Monte Carlo corr with -W*grad = {r:.4f}; Eq. 4b score, homeostasis, encoder; "
+          f"Lemma E rel. err {errE:.1e}, Theorem E cosine {cosE:.6f}; emergent == v4 on flow)")

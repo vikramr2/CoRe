@@ -1,6 +1,6 @@
 ---
 name: doc-edit
-description: House rules for editing docs/derivation.md, docs/SPEC.md and CLAUDE.md in this repo — equation numbering, Proposal markers, Appendix A/B bookkeeping, cross-references, math rendering and the changelog. Use for any non-trivial edit to those docs.
+description: House rules for editing docs/derivation.md, docs/SPEC.md and CLAUDE.md in this repo — equation numbering, Proposal markers, Appendix A bookkeeping, cross-references, math rendering and the changelog. Use for any non-trivial edit to those docs.
 ---
 
 # Editing the project docs
@@ -18,9 +18,9 @@ description: House rules for editing docs/derivation.md, docs/SPEC.md and CLAUDE
 
 1. **Check the math first.** Any new or changed gradient, modulator or rule needs `/derivation-check` *before* you edit. Record its numbers in Appendix A.
 2. **Mark undecided ideas.** Write `**Proposal**` before them and never present them as settled. Unresolved questions go under **Open**, or into SPEC §8.
-3. **Number equations** as `\qquad \text{(n)}`. Insert new equations with letter suffixes, (1a) or (4b), rather than renumbering. Keep the labels in reading order within a section.
+3. **Number equations** as `\qquad \text{(n)}`. Insert new equations with letter suffixes, (1a) or (4b), rather than renumbering. Retired numbers are not reused. Keep the labels in reading order within a section.
 4. **Avoid renumbering sections.** Add subsections at the end of a section, such as §4.6, or as sub-numbers. After any structural change, grep for `§` and `Eq.` in SPEC, derivation, CLAUDE.md and `.claude/agents/*.md`, and fix every reference.
-5. **Appendix B.** Every substantive revision adds a numbered item: what changed and why, dated.
+5. **No history in the derivation.** It states the current model only: no dated notes, corrections lists or "previously" asides. What changed and why goes in the CHANGELOG (and the iteration record); cite an iteration in one clause only where a design choice needs its evidence.
 6. **Conventions** (CLAUDE.md):
    - $W_{ij}$ is pre $j$ → post $i$, and $T = W/d$.
    - Frames are indexed $f$; simulation steps $t$.

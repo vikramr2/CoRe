@@ -1,0 +1,41 @@
+diff --git a/experiments/report.py b/experiments/report.py
+index 5b25bd5..6c3c520 100644
+--- a/experiments/report.py
++++ b/experiments/report.py
+@@ -324,6 +324,36 @@ def _latent_ablation():
+ 
+ 
+ STUDIES["latent-ablation"] = _latent_ablation()
++
++XSWEEP_GRID = (0, 0.0125, 0.025, 0.05, 0.1, 0.2, 0.5)
++
++
++def _cross_sweep():
++    """cross-sweep (iteration 018): the race study's implicit columns (map term off) at seven levels of R's
++    cross-module connection probability, --p-cross 0 (= sealed) to 0.5 (= within, no modular structure), on each task's
++    race-study flags. Dev seeds 20-29, n = 10: the runs are the pre-registered dev stage (pilot018, worktree
++    cross-sweep at e1c27bc), copied into runs/ unchanged by user decision (2026-11-02) instead of a fresh-seed rerun;
++    the README states this. Reference: sealed (px0); pairs each point vs sealed and vs implicit (px0.05), Holm per
++    task and family."""
++    common = ["--rate-target", "40", "--block", "20", "--fast", "--rate-match-rec"]
++    race = {"CartPole": ["--readout", "race", "--race-reprobe", "50"],
++            "Acrobot": ["--eta-cal", "--beta-c", "-1.5", "--readout", "race", "--rate-cost", "5e-4", "--rate-floor",
++                        "0.5", "--race-theta", "16", "--freeze", "40"],
++            "LunarLander": ["--eta-cal", "--readout", "race", "--rate-cost", "5e-4", "--rate-floor", "0.5",
++                            "--race-theta", "26"]}
++    cols = ["--chi-rec", "0.3", "--rec", "cols", "--lam", "0"]
++    groups, pairs = {}, []
++    for t, f in race.items():
++        for p in XSWEEP_GRID:
++            groups[f"{t}_px{p:g}"] = dict(task=t, engine="nlif", seeds=range(20, 30),
++                                          flags=[*common, *f, *cols, "--p-cross", str(p)])
++        pairs += [(f"{t}_px{p:g}", f"{t}_px0", t) for p in XSWEEP_GRID[1:]]
++        pairs += [(f"{t}_px{p:g}", f"{t}_px0.05", f"{t}-implicit") for p in XSWEEP_GRID if p != 0.05]
++    return dict(title="Cross-column wiring of the race columns, sealed to unstructured (dev seeds)", groups=groups,
++                pairs=pairs, reference={t: f"{t}_px0" for t in race}, gates={})
++
++
++STUDIES["cross-sweep"] = _cross_sweep()
+ COLUMNS = ["group", "task", "engine", "flags", "n_declared", "n", "solved", "T_f_mean", "T_f_sd", "T_f_n", "T_s_mean",
+            "T_s_sd", "T_s_median", "T_m_mean", "T_m_sd", "T_m_n", "ret_mean", "ret_sd", "ret_ge_M", "ms_per_frame",
+            "resumes", "mw_ref", "mw_T_f", "mw_T_s", "mw_ret", "gate_min_solved", "gate_pass"]

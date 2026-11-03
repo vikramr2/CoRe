@@ -1,0 +1,379 @@
+diff --git a/experiments/tdstdp.py b/experiments/tdstdp.py
+index fce4e4a..7596fbd 100644
+--- a/experiments/tdstdp.py
++++ b/experiments/tdstdp.py
+@@ -4,6 +4,7 @@ mapstdp/tdstdp.py) in closed loop on CartPole and LunarLander. Run from the repo
+     [--block B] [--episodes E] [--engine {numpy,snm,lif}] [--legacy [--rate0 p] [--engine lif-snm]]
+     -> experiments/results/tdstdp_<task>[_ck][_<tokens>]_s<seed>.json   (tokens: options off the preset, in order
+        adam | noadam | sgd, B<B>, h<H>, ep<E>, r<rate0> (legacy), engine snm | lif | lifsnm)
++    [--out PATH]   (result path; the default above; experiments.report uses it to write reports/<study>/runs/)
+   python -m experiments.tdstdp --summary   -> per group: T_f, T_s, solved fraction, last-100 return, ms per frame,
+        next to CK's Table 2 and the model v4 (flow, spiking) returns
+ Default (token ck): the authors' code, reference/td_stdp (commit a5cb7f4, BindsNET 0.2.7), where it disagrees with
+@@ -455,15 +456,15 @@ def calibrate_ck(cfg):
+     return np.array([cfg.eta_c, cfg.eta_a]) / rms, rms
+ 
+ 
+-def run_ck(cfg, log_every=50):
++def run_ck(cfg, log_every=50, out=None):
+     eta_sgd = None
+     if cfg.sgd:
+         eta_sgd, rms = calibrate_ck(cfg)
+         cfg = dataclasses.replace(cfg, eta_c=float(eta_sgd[0]), eta_a=float(eta_sgd[1]))
+         print(f"sgd calibration: per-ms update RMS {rms}, eta (mV) {eta_sgd}", flush=True)
+     r, wall0, resumes = CKRunner(cfg), 0.0, 0
+-    OUT.mkdir(exist_ok=True)
+-    fn = OUT / f"{name(cfg)}.json"
++    fn = pathlib.Path(out) if out else OUT / f"{name(cfg)}.json"
++    fn.parent.mkdir(parents=True, exist_ok=True)
+     ck = fn.with_suffix(".ckpt.npz")
+     if ck.exists():
+         wall0, resumes = r.load(ck)
+@@ -530,17 +531,19 @@ def solve_times(task, returns_heads):
+     return Tf, Ts, ret.tolist()
+ 
+ 
+-def run(cfg, log_every=50):
++def run(cfg, log_every=50, out=None):
++    """Run cfg; the result goes to `out` (a .json path; .partial and .ckpt.npz alongside) or, by default, to
++    experiments/results/<name(cfg)>.json."""
+     if cfg.ck:
+-        return run_ck(cfg, log_every)
++        return run_ck(cfg, log_every, out)
+     eta_sgd = None
+     if cfg.sgd:
+         eta_sgd, rms = calibrate(cfg)
+         cfg = dataclasses.replace(cfg, eta_c=float(eta_sgd[0]), eta_a=float(eta_sgd[1]))
+         print(f"sgd calibration: per-ms update RMS {rms}, eta (CK units) {eta_sgd}", flush=True)
+     r, t0, nxt = Runner(cfg), time.perf_counter(), log_every
+-    OUT.mkdir(exist_ok=True)
+-    fn = OUT / f"{name(cfg)}.json"
++    fn = pathlib.Path(out) if out else OUT / f"{name(cfg)}.json"
++    fn.parent.mkdir(parents=True, exist_ok=True)
+     while not r.done.all():
+         r.tick()
+         e = min(len(x) for x in r.returns)
+@@ -593,8 +596,35 @@ def trailing_mean_time(ret, thr):
+     return int(hit[0]) + 100 if len(hit) else None
+ 
+ 
+-def summary():
++def group_stats(task, rs, ref=None):
++    """Summary statistics of one group of runs (result dicts) on `task`, shared by --summary and experiments.report:
++    T_f / T_s (CK definitions) mean, sd (ddof 0) and count over runs that reach them; median T_s with unsolved =
++    infinite; T_m = first episode whose trailing-100 mean reaches M_THR; last-100 return mean, sd and the count >=
++    M_THR; mean ms per frame. With ref (another group's runs): two-sided Mann-Whitney p on T_f, T_s (never reached =
++    episode cap + 1) and the last-100 return."""
+     from scipy.stats import mannwhitneyu
++    Tf = [r["T_f"] for r in rs if r["T_f"] is not None]
++    Ts = [r["T_s"] for r in rs if r["T_s"] is not None]
++    Tm = [t for t in (trailing_mean_time(r["returns"], M_THR[task]) for r in rs) if t is not None]
++    R = [float(np.mean(r["returns"][-100:])) for r in rs]
++    ms = lambda x: (float(np.mean(x)), float(np.std(x))) if x else (float("nan"),) * 2  # noqa: E731
++    out = {"n": len(rs), "solved": len(Ts), "T_f_mean": ms(Tf)[0], "T_f_sd": ms(Tf)[1], "T_f_n": len(Tf),
++           "T_s_mean": ms(Ts)[0], "T_s_sd": ms(Ts)[1],
++           "T_s_median": float(np.median([r["T_s"] if r["T_s"] is not None else np.inf for r in rs])),
++           "T_m_mean": ms(Tm)[0], "T_m_sd": ms(Tm)[1], "T_m_n": len(Tm), "ret_mean": float(np.mean(R)),
++           "ret_sd": float(np.std(R)), "ret_ge_M": sum(x >= M_THR[task] for x in R),
++           "ms_per_frame": float(np.mean([r["ms_per_frame"] for r in rs]))}
++    if ref is not None:
++        cap = lambda r: (r["config"].get("max_eps") or r["config"]["episodes"]) + 1  # noqa: E731
++        cens = lambda rr, k: [r[k] or cap(r) for r in rr]  # noqa: E731
++        R0 = [np.mean(r["returns"][-100:]) for r in ref]
++        out |= {"mw_T_f": float(mannwhitneyu(cens(rs, "T_f"), cens(ref, "T_f")).pvalue),
++                "mw_T_s": float(mannwhitneyu(cens(rs, "T_s"), cens(ref, "T_s")).pvalue),
++                "mw_ret": float(mannwhitneyu(R, R0).pvalue)}
++    return out
++
++
++def summary():
+     print("T_f / T_s (CK definitions, pre-registered): mean +- sd over runs that reach it [n]; median T_s counts "
+           "unsolved as infinite. Authors'-code groups (ck) count episodes pooled over copies (main.py); legacy "
+           "LunarLander groups count per copy (copy-mean returns). Secondary: T_m = first episode whose trailing-100 "
+@@ -604,8 +634,7 @@ def summary():
+     groups = {}
+     for f in sorted(glob.glob(str(OUT / "tdstdp_*.json"))):
+         groups.setdefault(pathlib.Path(f).stem.rsplit("_s", 1)[0], []).append(json.loads(pathlib.Path(f).read_text()))
+-    ms = lambda x: f"{np.mean(x):6.1f} +- {np.std(x):5.1f}" if x else "   nan          "  # noqa: E731
+-    cap = lambda r: (r["config"].get("max_eps") or r["config"]["episodes"]) + 1  # noqa: E731
++    ms = lambda m, s: f"{m:6.1f} +- {s:5.1f}" if m == m else "   nan          "  # noqa: E731
+     for task in PAPER:
+         if not any(g.split("_")[1] == task for g in groups):
+             continue
+@@ -620,22 +649,14 @@ def summary():
+                 continue
+             print("  authors' code (default):" if ck else "  pre-audit code (--legacy):")
+             for g, rs in sorted(gs.items(), key=lambda kv: (kv[0] != base, kv[0])):
+-                Tf = [r["T_f"] for r in rs if r["T_f"] is not None]
+-                Ts = [r["T_s"] for r in rs if r["T_s"] is not None]
+-                Tm = [t for t in (trailing_mean_time(r["returns"], M_THR[task]) for r in rs) if t is not None]
+-                med = np.median([r["T_s"] if r["T_s"] is not None else np.inf for r in rs])
+-                R = [np.mean(r["returns"][-100:]) for r in rs]
+-                line = (f"  {g:28} n={len(rs):2d} solved {len(Ts):2d}/{len(rs):2d}  T_f {ms(Tf)} [{len(Tf):2d}]  "
+-                        f"T_s {ms(Ts)} median {med:5.0f}  T_m {ms(Tm)} [{len(Tm):2d}]  ret {np.mean(R):6.1f} +- "
+-                        f"{np.std(R):5.1f} >=M {sum(x >= M_THR[task] for x in R):2d}  "
+-                        f"ms/fr {np.mean([r['ms_per_frame'] for r in rs]):5.2f}")
+-                if g != base and base in gs:
+-                    rb = gs[base]
+-                    cens = lambda rr, k: [r[k] or cap(r) for r in rr]  # noqa: E731
+-                    R0 = [np.mean(r["returns"][-100:]) for r in rb]
+-                    line += (f"  MW {mannwhitneyu(cens(rs, 'T_f'), cens(rb, 'T_f')).pvalue:.2g} / "
+-                             f"{mannwhitneyu(cens(rs, 'T_s'), cens(rb, 'T_s')).pvalue:.2g} / "
+-                             f"{mannwhitneyu(R, R0).pvalue:.2g}")
++                st = group_stats(task, rs, gs[base] if g != base and base in gs else None)
++                line = (f"  {g:28} n={st['n']:2d} solved {st['solved']:2d}/{st['n']:2d}  T_f "
++                        f"{ms(st['T_f_mean'], st['T_f_sd'])} [{st['T_f_n']:2d}]  T_s {ms(st['T_s_mean'], st['T_s_sd'])}"
++                        f" median {st['T_s_median']:5.0f}  T_m {ms(st['T_m_mean'], st['T_m_sd'])} [{st['T_m_n']:2d}]  "
++                        f"ret {st['ret_mean']:6.1f} +- {st['ret_sd']:5.1f} >=M {st['ret_ge_M']:2d}  "
++                        f"ms/fr {st['ms_per_frame']:5.2f}")
++                if "mw_T_f" in st:
++                    line += f"  MW {st['mw_T_f']:.2g} / {st['mw_T_s']:.2g} / {st['mw_ret']:.2g}"
+                 print(line)
+ 
+ 
+@@ -656,6 +677,7 @@ def main():
+                     help="lif: BindsNET's LIF (legacy: CK Eq. 1); lif-snm (legacy): SuperNeuroMAT's subtractive leak; "
+                          "flow: the branching step's noise-free limit")
+     ap.add_argument("--fast", action="store_true", help="update summed over copies in one product (not bit-identical)")
++    ap.add_argument("--out", default=None, help="result .json path (default experiments/results/<name>.json)")
+     ap.add_argument("--summary", action="store_true")
+     a = ap.parse_args()
+     if a.summary:
+@@ -670,7 +692,7 @@ def main():
+         kw.update(adam=False, sgd=True)
+     elif a.adam is not None:
+         kw["adam"] = a.adam
+-    run(preset(a.task, legacy=a.legacy, seed=a.seed, engine=a.engine, **kw))
++    run(preset(a.task, legacy=a.legacy, seed=a.seed, engine=a.engine, **kw), out=a.out)
+ 
+ 
+ if __name__ == "__main__":
+diff --git a/experiments/report.py b/experiments/report.py
+new file mode 100644
+index 0000000..8da44d4
+--- /dev/null
++++ b/experiments/report.py
+@@ -0,0 +1,223 @@
++"""Final reported studies: reports/<study>/ holds only what this runner writes (experiments/results/ is the
++intermediates store: dev, tuning and diagnostic runs, and the default output of every CLI). Run from the repo root:
++  python -m experiments.report run <study> [--workers N]
++    -> reports/<study>/runs/<group>/s<seed>.json (+ manifest.json, code.patch if the tree is dirty); skips finished
++       runs, resumes checkpointed ones (*.ckpt.npz, gitignored); refuses to launch if mapstdp/ or experiments/ differ
++       from the code state recorded in the manifest; summarizes at the end
++  python -m experiments.report summarize <study>   -> reports/<study>/summary.csv, summary.md, from runs/ only
++Studies are declared in STUDIES: groups -> (task, engine, flags, seeds), a reference group per task (Mann-Whitney) and
++gates (minimum solved count). Statistics are experiments.tdstdp.group_stats, the same as tdstdp --summary."""
++import argparse
++import concurrent.futures as cf
++import csv
++import datetime
++import hashlib
++import json
++import os
++import pathlib
++import platform
++import subprocess
++import sys
++import time
++
++from experiments import tdstdp
++
++ROOT = pathlib.Path(__file__).resolve().parent.parent
++REPORTS = ROOT / "reports"
++LOGS = ROOT / "logs" / "report"
++ENGINE_FLAG = {"lif": ["--engine", "lif"], "branching": []}  # branching = the numpy engine (tdstdp default)
++
++_CP, _LL = range(1000, 1020), range(1000, 1010)
++STUDIES = {
++    "tdstdp-baseline": dict(
++        title="TD-STDP baseline (Chung & Kozma 2020, authors' code path), block sum B = 20, --fast",
++        groups={
++            "CartPole_noadam_lif": dict(task="CartPole", engine="lif", flags=["--block", "20", "--fast"], seeds=_CP),
++            "CartPole_noadam_branching": dict(task="CartPole", engine="branching", flags=["--block", "20", "--fast"],
++                                              seeds=_CP),
++            "CartPole_adam_lif": dict(task="CartPole", engine="lif", flags=["--adam", "--block", "20", "--fast"],
++                                      seeds=_CP),
++            "CartPole_adam_branching": dict(task="CartPole", engine="branching",
++                                            flags=["--adam", "--block", "20", "--fast"], seeds=_CP),
++            "LunarLander_adam_lif": dict(task="LunarLander", engine="lif", flags=["--block", "20", "--fast"],
++                                         seeds=_LL),
++            "LunarLander_adam_branching": dict(task="LunarLander", engine="branching",
++                                               flags=["--block", "20", "--fast"], seeds=_LL),
++            "LunarLander_sgd_lif": dict(task="LunarLander", engine="lif", flags=["--sgd", "--block", "20", "--fast"],
++                                        seeds=_LL),
++            "LunarLander_sgd_branching": dict(task="LunarLander", engine="branching",
++                                              flags=["--sgd", "--block", "20", "--fast"], seeds=_LL),
++        },
++        reference={"CartPole": "CartPole_noadam_lif", "LunarLander": "LunarLander_adam_lif"},
++        gates={"CartPole_noadam_lif": 18, "LunarLander_adam_lif": 6},
++    ),
++}
++COLUMNS = ["group", "task", "engine", "flags", "n_declared", "n", "solved", "T_f_mean", "T_f_sd", "T_f_n", "T_s_mean",
++           "T_s_sd", "T_s_median", "T_m_mean", "T_m_sd", "T_m_n", "ret_mean", "ret_sd", "ret_ge_M", "ms_per_frame",
++           "resumes", "mw_ref", "mw_T_f", "mw_T_s", "mw_ret", "gate_min_solved", "gate_pass"]
++
++
++def command(g, seed, out):
++    return [sys.executable, "-m", "experiments.tdstdp", "--task", g["task"], "--seed", str(seed),
++            *ENGINE_FLAG[g["engine"]], *g["flags"], "--out", str(out)]
++
++
++def run_path(study, group, seed, root=REPORTS):
++    return root / study / "runs" / group / f"s{seed}.json"
++
++
++def code_state():
++    """(patch, sha256): `git diff HEAD` of mapstdp/ and experiments/ (results excluded) plus every untracked file there,
++    as a patch; sha256 of the patch bytes ('' if the tree is clean)."""
++    git = lambda *a: subprocess.run(["git", *a], cwd=ROOT, capture_output=True, text=True).stdout  # noqa: E731
++    spec = ["--", "mapstdp", "experiments", ":(exclude)experiments/results"]
++    patch = git("diff", "HEAD", *spec)
++    for f in git("ls-files", "--others", "--exclude-standard", *spec).split():
++        patch += git("diff", "--no-index", "--", "/dev/null", f)
++    return patch, hashlib.sha256(patch.encode()).hexdigest()
++
++
++def versions():
++    import gymnasium
++    import numpy
++    import scipy
++    return {"python": platform.python_version(), "numpy": numpy.__version__, "scipy": scipy.__version__,
++            "gymnasium": gymnasium.__version__}
++
++
++def manifest(study, workers):
++    s, d = STUDIES[study], REPORTS / study
++    patch, sha = code_state()
++    head = subprocess.run(["git", "rev-parse", "HEAD"], cwd=ROOT, capture_output=True, text=True).stdout.strip()
++    groups = {k: {"task": g["task"], "engine": g["engine"], "flags": g["flags"], "seeds": list(g["seeds"]),
++                  "commands": [" ".join(["python", *command(g, sd, run_path(study, k, sd).relative_to(ROOT))[1:]])
++                               for sd in g["seeds"]]} for k, g in s["groups"].items()}
++    return {"study": study, "title": s["title"], "created": datetime.datetime.now().astimezone().isoformat(),
++            "git_head": head, "dirty": bool(patch), "code_sha256": sha, "code_patch": "code.patch" if patch else None,
++            "versions": versions(), "env": {"OMP_NUM_THREADS": "1"}, "workers": workers,
++            "reference": s["reference"], "gates": s["gates"], "groups": groups, "launches": []}, patch, d
++
++
++def run(study, workers):
++    m, patch, d = manifest(study, workers)
++    mf = d / "manifest.json"
++    if mf.exists():
++        old = json.loads(mf.read_text())
++        if old["code_sha256"] != m["code_sha256"] or old["git_head"] != m["git_head"]:
++            sys.exit(f"code state differs from {mf} (git {old['git_head'][:7]}, sha {old['code_sha256'][:12]}): "
++                     f"a study must use one code state; delete reports/{study}/runs and manifest.json to relaunch")
++        m = old
++    else:
++        d.mkdir(parents=True, exist_ok=True)
++        if patch:
++            (d / "code.patch").write_text(patch)
++    todo = [(k, sd) for k, g in STUDIES[study]["groups"].items() for sd in g["seeds"]
++            if not run_path(study, k, sd).exists()]
++    m["launches"].append({"date": datetime.datetime.now().astimezone().isoformat(), "workers": workers,
++                          "pending": len(todo), "resuming": sum(run_path(study, k, sd).with_suffix(".ckpt.npz").exists()
++                                                                for k, sd in todo)})
++    mf.write_text(json.dumps(m, indent=1))
++    (LOGS / study).mkdir(parents=True, exist_ok=True)
++    env = os.environ | {"OMP_NUM_THREADS": "1", "MKL_NUM_THREADS": "1", "OPENBLAS_NUM_THREADS": "1"}
++
++    def one(k, sd):
++        g, out = STUDIES[study]["groups"][k], run_path(study, k, sd)
++        out.parent.mkdir(parents=True, exist_ok=True)
++        with open(LOGS / study / f"{k}_s{sd}.log", "a") as log:
++            rc = subprocess.run(command(g, sd, out.relative_to(ROOT)), cwd=ROOT, env=env, stdout=log,
++                                stderr=subprocess.STDOUT).returncode
++        print(f"{time.strftime('%H:%M:%S')} {k} s{sd} rc {rc}", flush=True)
++        return rc
++
++    print(f"{study}: {len(todo)} runs pending, {workers} workers", flush=True)
++    with cf.ThreadPoolExecutor(workers) as ex:
++        rcs = list(ex.map(lambda a: one(*a), todo))
++    bad = sum(rc != 0 for rc in rcs)
++    print(f"{study}: done, {bad} failed", flush=True)
++    return bad
++
++
++def fmt(x, nd=1):
++    if x is None or x == "":
++        return ""
++    if isinstance(x, float):
++        return "inf" if x == float("inf") else "" if x != x else f"{x:.{nd}f}"
++    return str(x)
++
++
++def pm(r, a):
++    """'mean ± sd [count]' of statistic a in a summary row, or '–' if no run reaches it."""
++    return f"{fmt(r[a + '_mean'])} ± {fmt(r[a + '_sd'])} [{r[a + '_n']}]" if r[a + "_n"] else "–"
++
++
++def summarize(study, root=REPORTS, studies=None):
++    """summary.csv and summary.md of reports/<study>/ from runs/ only (finished runs, s<seed>.json)."""
++    s, d = (studies or STUDIES)[study], root / study
++    runs = {k: [json.loads(p.read_text()) for p in sorted((d / "runs" / k).glob("s*.json"))] for k in s["groups"]}
++    rows = []
++    for k, g in s["groups"].items():
++        ref = s["reference"].get(g["task"])
++        row = {"group": k, "task": g["task"], "engine": g["engine"], "flags": " ".join(g["flags"]),
++               "n_declared": len(g["seeds"]), "n": len(runs[k])}
++        if runs[k]:
++            st = tdstdp.group_stats(g["task"], runs[k], runs[ref] if k != ref and runs.get(ref) else None)
++            row |= st | {"resumes": sum(r.get("resumes", 0) for r in runs[k])}
++            row["mw_ref"] = ref if "mw_T_f" in st else ""
++        if k in s["gates"]:
++            row["gate_min_solved"] = s["gates"][k]
++            done = row["n"] == row["n_declared"]
++            row["gate_pass"] = row.get("solved", 0) >= s["gates"][k] if done else "incomplete"
++        rows.append(row)
++    with open(d / "summary.csv", "w", newline="") as f:
++        w = csv.DictWriter(f, COLUMNS)
++        w.writeheader()
++        w.writerows([{c: (repr(r[c]) if isinstance(r.get(c), float) else r.get(c, "")) for c in COLUMNS} for r in rows])
++    mf = d / "manifest.json"
++    man = json.loads(mf.read_text()) if mf.exists() else {}
++    md = [f"# {study}: summary", "",
++          f"Generated by `python -m experiments.report summarize {study}` from `runs/` only. Code: git "
++          f"`{man.get('git_head', '?')[:7]}`, patch sha256 `{man.get('code_sha256', '?')[:12]}`.", "",
++          "Columns: solved = CK's criterion; $T_f$, $T_s$, $T_m$ = mean ± sd (ddof 0) over the runs that reach them "
++          "[count]; median $T_s$ counts unsolved runs as infinite; return = last-100 mean, mean ± sd over seeds; "
++          "MW = two-sided Mann–Whitney p against the task's reference group on $T_f$ / $T_s$ (never reached = episode "
++          "cap + 1) / return.", ""]
++    for task in dict.fromkeys(g["task"] for g in s["groups"].values()):
++        p = tdstdp.PAPER[task]
++        md += [f"## {task}", "", f"CK 2020 (10 runs, all solved): $T_f$ {p['T_f'][0]:.1f} ± {p['T_f'][1]:.1f}, "
++               f"$T_s$ {p['T_s'][0]:.1f} ± {p['T_s'][1]:.1f}. Reference group: `{s['reference'].get(task, '-')}`. "
++               f"$T_m$ threshold: {tdstdp.M_THR[task]:g}.", "",
++               "| Group | n | Solved | $T_f$ | $T_s$ (median) | $T_m$ | Return | ms/frame "
++               "| MW $T_f$ / $T_s$ / return | Gate |",
++               "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |"]
++        for r in (r for r in rows if r["task"] == task):
++            if not r["n"]:
++                md.append(f"| `{r['group']}` | 0/{r['n_declared']} | | | | | | | | |")
++                continue
++            ts = (f"{fmt(r['T_s_mean'])} ± {fmt(r['T_s_sd'])} ({fmt(r['T_s_median'], 0)})" if r["solved"]
++                  else f"– ({fmt(r['T_s_median'], 0)})")
++            mw = " / ".join(f"{r[c]:.2g}" for c in ("mw_T_f", "mw_T_s", "mw_ret")) if r.get("mw_ref") else "ref"
++            verdict = {True: "**pass**", False: "**fail**"}.get(r.get("gate_pass"), "incomplete")
++            gate = f"≥ {r['gate_min_solved']}: {verdict}" if "gate_min_solved" in r else ""
++            md.append(f"| `{r['group']}` | {r['n']}/{r['n_declared']} | {r['solved']}/{r['n']} | {pm(r, 'T_f')} | "
++                      f"{ts} | {pm(r, 'T_m')} | {fmt(r['ret_mean'])} ± {fmt(r['ret_sd'])} | {r['ms_per_frame']:.2f} | "
++                      f"{mw} | {gate} |")
++        md.append("")
++    (d / "summary.md").write_text("\n".join(md))
++    return rows
++
++
++def main():
++    ap = argparse.ArgumentParser()
++    ap.add_argument("cmd", choices=("run", "summarize"))
++    ap.add_argument("study", choices=tuple(STUDIES))
++    ap.add_argument("--workers", type=int, default=8)
++    a = ap.parse_args()
++    if a.cmd == "run":
++        bad = run(a.study, a.workers)
++        summarize(a.study)
++        sys.exit(1 if bad else 0)
++    summarize(a.study)
++
++
++if __name__ == "__main__":
++    main()

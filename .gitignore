@@ -1,5 +1,6 @@
 data/
 models/NOTES.md
+experiments/results/
 # experiments/results
 
 # Byte-compiled / optimized / DLL files
@@ -470,3 +471,19 @@ TSWLatexianTemp*
 
 # SLURM job logs
 logs/
+
+# External reference repos (cloned for comparison, not part of this project)
+reference/
+
+# TD-STDP run checkpoints (experiments/tdstdp.py; deleted when a run completes)
+experiments/results/*.ckpt.npz
+
+# Final-study run checkpoints and partials (experiments/report.py; deleted when a run completes)
+reports/**/*.ckpt.npz
+reports/**/*.partial
+
+# Full model archive (every saved model; kept off git, to go on a server; models/ keeps the best per arm)
+archive/
+
+# Study groups named by a decimal (cross-sweep `<task>_px0.1`) match the LaTeX rules `*.[1-9]` above
+!reports/*/runs/*/

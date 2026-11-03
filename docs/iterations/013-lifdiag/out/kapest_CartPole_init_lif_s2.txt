@@ -1,0 +1,6 @@
+CartPole init lif_s2 stim 0 whole    corr(kappa,JL) 0.767 rule cos 0.941 kappa*Phi vs K8 0.780 | weak-syn kappa/zeta nan vs JL nan
+CartPole init lif_s2 stim 0 burn     corr(kappa,JL) 0.763 rule cos 0.940 kappa*Phi vs K8 0.780 | weak-syn kappa/zeta nan vs JL nan
+CartPole init lif_s2 stim 0 longrun  corr(kappa,JL) 0.767 rule cos 0.943 kappa*Phi vs K8 0.788 | weak-syn kappa/zeta nan vs JL nan
+CartPole init lif_s2 stim 1 whole    corr(kappa,JL) 0.823 rule cos 0.941 kappa*Phi vs K8 0.801 | weak-syn kappa/zeta nan vs JL nan
+CartPole init lif_s2 stim 1 burn     corr(kappa,JL) 0.821 rule cos 0.940 kappa*Phi vs K8 0.800 | weak-syn kappa/zeta nan vs JL nan
+CartPole init lif_s2 stim 1 longrun  corr(kappa,JL) 0.823 rule cos 0.940 kappa*Phi vs K8 0.804 | weak-syn kappa/zeta nan vs JL nan

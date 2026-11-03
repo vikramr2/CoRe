@@ -1,0 +1,12 @@
+# Brian2 reference env (QIF engine check only; training stays in map-stdp).
+# Separate because Brian2 2.9.0 does not import under numpy 2.4 (np.ndarray.ptp removed), and pinning
+# map-stdp to numpy 2.3 changes the spiking golden case.
+#   conda env create -f environment-brian2.yml && conda run -n map-stdp-brian2 python -m mapstdp.qif --brian2
+name: map-stdp-brian2
+channels:
+  - conda-forge
+dependencies:
+  - python=3.11
+  - numpy>=2.0,<2.4
+  - scipy
+  - brian2=2.9

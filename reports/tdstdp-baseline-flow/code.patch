@@ -1,0 +1,68 @@
+diff --git a/experiments/report.py b/experiments/report.py
+index 7d0f2a0..f8c9a4a 100644
+--- a/experiments/report.py
++++ b/experiments/report.py
+@@ -6,7 +6,9 @@ intermediates store: dev, tuning and diagnostic runs, and the default output of
+        from the code state recorded in the manifest; summarizes at the end
+   python -m experiments.report summarize <study>   -> reports/<study>/summary.csv, summary.md, from runs/ only
+ Studies are declared in STUDIES: groups -> (task, engine, flags, seeds), a reference group per task (Mann-Whitney) and
+-gates (minimum solved count). Statistics are experiments.tdstdp.group_stats, the same as tdstdp --summary."""
++gates (minimum solved count). A reference "<study>/<group>" names a group of another study (a companion study added
++under a later code state compares against it without rerunning it). Statistics are experiments.tdstdp.group_stats,
++the same as tdstdp --summary."""
+ import argparse
+ import concurrent.futures as cf
+ import csv
+@@ -25,7 +27,8 @@ from experiments import tdstdp
+ ROOT = pathlib.Path(__file__).resolve().parent.parent
+ REPORTS = ROOT / "reports"
+ LOGS = ROOT / "logs" / "report"
+-ENGINE_FLAG = {"lif": ["--engine", "lif"], "branching": []}  # branching = the numpy engine (tdstdp default)
++ENGINE_FLAG = {"lif": ["--engine", "lif"], "branching": [],  # branching = the numpy engine (tdstdp default)
++               "flow": ["--engine", "flow"]}
+ 
+ _CP, _LL = range(1000, 1020), range(1000, 1010)
+ STUDIES = {
+@@ -55,6 +58,22 @@ STUDIES = {
+                     "the policy from the first episodes; CK report no CartPole Adam config and CartPole needs no Adam"
+                  for k in ("CartPole_adam_lif", "CartPole_adam_branching")},
+     ),
++    "tdstdp-baseline-flow": dict(
++        title="TD-STDP baseline, flow engine (the branching step's noise-free limit), block sum B = 20, --fast",
++        groups={
++            "CartPole_noadam_flow": dict(task="CartPole", engine="flow", flags=["--block", "20", "--fast"], seeds=_CP),
++            # block-sum control: B = 20 was gated on branching only (iteration 013 §11, S1)
++            "CartPole_noadam_flow_b1": dict(task="CartPole", engine="flow", flags=["--block", "1", "--fast"],
++                                            seeds=_CP),
++            "LunarLander_adam_flow": dict(task="LunarLander", engine="flow", flags=["--block", "20", "--fast"],
++                                          seeds=_LL),
++            "LunarLander_sgd_flow": dict(task="LunarLander", engine="flow", flags=["--sgd", "--block", "20", "--fast"],
++                                         seeds=_LL),
++        },
++        reference={"CartPole": "tdstdp-baseline/CartPole_noadam_lif",
++                   "LunarLander": "tdstdp-baseline/LunarLander_adam_lif"},
++        gates={},
++    ),
+ }
+ COLUMNS = ["group", "task", "engine", "flags", "n_declared", "n", "solved", "T_f_mean", "T_f_sd", "T_f_n", "T_s_mean",
+            "T_s_sd", "T_s_median", "T_m_mean", "T_m_sd", "T_m_n", "ret_mean", "ret_sd", "ret_ge_M", "ms_per_frame",
+@@ -154,10 +173,18 @@ def pm(r, a):
+     return f"{fmt(r[a + '_mean'])} ± {fmt(r[a + '_sd'])} [{r[a + '_n']}]" if r[a + "_n"] else "–"
+ 
+ 
++def load_runs(d, k):
++    """Finished runs (s<seed>.json) of group k in study directory d."""
++    return [json.loads(p.read_text()) for p in sorted((d / "runs" / k).glob("s*.json"))]
++
++
+ def summarize(study, root=REPORTS, studies=None):
+     """summary.csv and summary.md of reports/<study>/ from runs/ only (finished runs, s<seed>.json)."""
+     s, d = (studies or STUDIES)[study], root / study
+-    runs = {k: [json.loads(p.read_text()) for p in sorted((d / "runs" / k).glob("s*.json"))] for k in s["groups"]}
++    runs = {k: load_runs(d, k) for k in s["groups"]}
++    for ref in s["reference"].values():  # "<study>/<group>": a group of another study
++        if "/" in ref:
++            runs[ref] = load_runs(root / ref.split("/")[0], ref.split("/")[1])
+     rows = []
+     dropped = s.get("dropped", {})
+     for k, g in s["groups"].items():

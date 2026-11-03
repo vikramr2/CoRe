@@ -1,0 +1,6 @@
+CartPole trained branch stim 0 whole    corr(kappa,JL) 0.964 rule cos 0.759 kappa*Phi vs K8 0.620 | weak-syn kappa/zeta 1.43e-05 vs JL 8.02e-06
+CartPole trained branch stim 0 burn     corr(kappa,JL) 0.965 rule cos 0.756 kappa*Phi vs K8 0.612 | weak-syn kappa/zeta 1.27e-05 vs JL 8.02e-06
+CartPole trained branch stim 0 longrun  corr(kappa,JL) 0.959 rule cos 0.847 kappa*Phi vs K8 0.546 | weak-syn kappa/zeta 1.15e-05 vs JL 8.02e-06
+CartPole trained branch stim 1 whole    corr(kappa,JL) 0.972 rule cos 0.788 kappa*Phi vs K8 0.493 | weak-syn kappa/zeta 1.05e-05 vs JL 6.78e-06
+CartPole trained branch stim 1 burn     corr(kappa,JL) 0.973 rule cos 0.790 kappa*Phi vs K8 0.441 | weak-syn kappa/zeta 8.48e-06 vs JL 6.78e-06
+CartPole trained branch stim 1 longrun  corr(kappa,JL) 0.971 rule cos 0.846 kappa*Phi vs K8 0.415 | weak-syn kappa/zeta 9.43e-06 vs JL 6.78e-06

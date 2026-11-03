@@ -1,0 +1,6 @@
+CartPole trained lif_det stim 0 whole    corr(kappa,JL) 0.823 rule cos 0.270 kappa*Phi vs K8 0.473 | weak-syn kappa/zeta 1.46e-05 vs JL 4.76e-06
+CartPole trained lif_det stim 0 burn     corr(kappa,JL) 0.806 rule cos 0.253 kappa*Phi vs K8 0.411 | weak-syn kappa/zeta 8.40e-06 vs JL 4.76e-06
+CartPole trained lif_det stim 0 longrun  corr(kappa,JL) 0.804 rule cos 0.257 kappa*Phi vs K8 0.410 | weak-syn kappa/zeta 5.91e-06 vs JL 4.76e-06
+CartPole trained lif_det stim 1 whole    corr(kappa,JL) 0.818 rule cos 0.463 kappa*Phi vs K8 0.566 | weak-syn kappa/zeta 7.08e-06 vs JL 5.48e-06
+CartPole trained lif_det stim 1 burn     corr(kappa,JL) 0.810 rule cos 0.424 kappa*Phi vs K8 0.574 | weak-syn kappa/zeta 3.35e-06 vs JL 5.48e-06
+CartPole trained lif_det stim 1 longrun  corr(kappa,JL) 0.813 rule cos 0.459 kappa*Phi vs K8 0.626 | weak-syn kappa/zeta 2.53e-06 vs JL 5.48e-06
