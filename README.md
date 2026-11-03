@@ -8,7 +8,7 @@ experiments on CartPole, Acrobot and LunarLander, and the final studies with the
 - `docs/derivation.md`: the model and its derivation. `docs/model.md`: the implemented model and its parameters.
 - `reports/<study>/`: the final studies (pre-registration `README.md`, raw runs and `summary.md`).
 - `models/`: the best trained model per arm of the reported studies (`models/README.md`).
-- [Walk replay](https://vikramr2.github.io/map-stdp/): one episode of every best model, spike by spike, with each spike's sampled cause (branch `viz`; built by `experiments/viz.py`).
+- [Walk replay](https://vikramr2.github.io/map-stdp/): one episode of every best model, spike by spike, with each spike's sampled cause (static pages on branch `viz`; the recorder `experiments/viz.py` is in history at `648818e`).
 
 ## Setup
 

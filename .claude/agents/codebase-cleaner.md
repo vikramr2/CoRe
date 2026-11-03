@@ -91,7 +91,7 @@ Run everything from the repo root with the `map-stdp` env active and `OMP_NUM_TH
 **Keep formats and interfaces.** Don't change:
 
 - the CLI flags or their defaults;
-- the result-file names (`m2_<backend>_<routing>_lam<λ>[_b..][_eta..][_at..]_<model>_s<seed>.json`, `viz_m2_*`; `m2.py --summary` globs `m2_*.json`, so other outputs must not use that prefix);
+- the result-file names (`m2_<backend>_<routing>_lam<λ>[_b..][_eta..][_at..]_<model>_s<seed>.json`, `m2.py --summary` globs `m2_*.json`, so other outputs must not use that prefix);
 - the JSON keys or the `params` dict.
 
 Old results must still load in `m2.py --summary`.
@@ -102,10 +102,9 @@ Old results must still load in `m2.py --summary`.
 
 **Don't add features, dependencies or abstractions nobody asked for.** Three similar lines can be better than a premature helper.
 
-**Keep refactors within test coverage.** The suite covers `mapstdp/` and the `experiments/m2.py` agent. If you want to restructure beyond a rename or move in code it doesn't cover (`experiments/m1.py`, `experiments/m2_viz.py`, the skill scripts and the hooks), propose the change and don't make it. For a rename there, run the script's own smoke check:
+**Keep refactors within test coverage.** The suite covers `mapstdp/` and the `experiments/m2.py` agent. If you want to restructure beyond a rename or move in code it doesn't cover (`experiments/m1.py`, the skill scripts and the hooks), propose the change and don't make it. For a rename there, run the script's own smoke check:
 
 - `python .claude/skills/derivation-check/scripts/fdcheck.py --selftest`
-- `python -m experiments.m2_viz page --seed 3 --out /tmp/x.html`, if `experiments/results/viz_m2_episode_s3.json` exists
 
 ## Report
 

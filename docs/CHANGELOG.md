@@ -2,6 +2,13 @@
 
 ## 2026-11-02
 
+### Removed: the replay recorders from `dev` (user decision)
+
+- **What.** `experiments/viz.py`, `experiments/m2_viz.py`, their `*_template.{html,css,js}` and `tests/test_viz.py`.
+- **The published pages are unaffected.** Branch `viz` holds the built pages and recorded episodes as static files and loads nothing from `dev`.
+- **To rebuild.** The last `dev` commit with the recorders is `648818e`; the `viz` branch README says so.
+- **References updated.** `CLAUDE.md`, `README.md`, the `codebase-cleaner` agent and `.gitignore` (the `replay/` output entry).
+
 ### Fixed: `.gitignore` hid study groups named by a decimal
 
 - **Problem.** The LaTeX rule `*.[1-9]` matched `reports/cross-sweep/runs/<task>_px0.1/`, `_px0.2/` and `_px0.5/`, so 90 of the study's 210 runs would have been left out of the commit without a warning.
