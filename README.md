@@ -24,8 +24,10 @@ directly.
 
 ## Rebuilding
 
-The code is on branch `dev`: `experiments/viz.py` (the recorder), `experiments/viz_template.html`,
-`experiments/viz_template.css` and `experiments/viz_template.js` (the page, its style and its script). From a `dev` checkout with this branch in `../map-stdp-viz`:
+The recorders were removed from `dev` on 2026-11-02 (commit `bd22133`). They are in `dev`'s history at `648818e`,
+the last commit that has them; check it out first (for example `git worktree add ../map-stdp-rec 648818e`).
+There: `experiments/viz.py` (the recorder), `experiments/viz_template.html`,
+`experiments/viz_template.css` and `experiments/viz_template.js` (the page, its style and its script). From that checkout, with this branch in `../map-stdp-viz`:
 
 ```bash
 python -m experiments.viz all --out ../map-stdp-viz/data --workers 28     # about 3 min
