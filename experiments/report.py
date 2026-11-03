@@ -387,10 +387,10 @@ def study_command(study, k, sd):
 
 
 def code_state():
-    """(patch, sha256): `git diff HEAD` of mapstdp/, experiments/ (results excluded) and models/*.py plus every
+    """(patch, sha256): `git diff HEAD` of mapstdp/, experiments/ (results excluded) and models/**/*.py plus every
     untracked file there, as a patch; sha256 of the patch bytes ('' if the tree is clean)."""
     git = lambda *a: subprocess.run(["git", *a], cwd=ROOT, capture_output=True, text=True).stdout  # noqa: E731
-    spec = ["--", "mapstdp", "experiments", ":(glob)models/*.py", ":(exclude)experiments/results"]
+    spec = ["--", "mapstdp", "experiments", ":(glob)models/**/*.py", ":(exclude)experiments/results"]
     patch = git("diff", "HEAD", *spec)
     for f in git("ls-files", "--others", "--exclude-standard", *spec).split():
         patch += git("diff", "--no-index", "--", "/dev/null", f)

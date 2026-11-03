@@ -1,5 +1,21 @@
 # Changelog
 
+## 2026-11-03
+
+### Changed: `models/basic.py` and `models/tdstdp.py` split into `models/helpers/` (user decision)
+
+- **What moved.** Each model file keeps its module docstring, training loop and command line. The objects and methods it uses moved verbatim into `models/helpers/`:
+  - `tasks.py`, shared by both models;
+  - basic: `agent.py` (parameters, `Config`, `Agent`), `basic_io.py`, `basic_stats.py`, `basic_cli.py`;
+  - tdstdp: `runner.py` (parameters, `Config`, presets, `Runner`, `CKRunner`), `calibration.py`, `tdstdp_io.py`, `tdstdp_stats.py`.
+- **Sizes.** `basic.py` goes from 1479 to 331 lines and `tdstdp.py` from 1735 to 381.
+- **Callers are unchanged.** The model files re-export their API through `__all__`, so `models.basic.Agent` and `models.tdstdp.load_ck_model` still work.
+- **Rules for the new layout.**
+  - Helpers never import the model files, which would be circular.
+  - A test that monkeypatches a moved name must now patch the helper: `calibration._race_probe`, `CAL_TICKS` and `reprobe_race` in `tests/test_tasks016.py`.
+- **Code state.** `report.py` now also covers `models/**/*.py`.
+- **Behaviour.** Unchanged: the golden tests are bit-identical and all 91 tests pass.
+
 ## 2026-11-02
 
 ### Changed: the two main models move to `models/` (user decision)

@@ -13,6 +13,21 @@ The two main models live here as importable modules, next to their saved weights
 | `basic.py` | Map-STDP: models v3/v4 and the emergent rule (task registry, `Config`, `Agent`, `run`, the per-task CLI) | `emergent-v4` and the M2/M3 runs | `python -m models.basic --task CartPole ...` |
 | `tdstdp.py` | The TD-STDP backbone of Chung & Kozma 2020 with the race readout and recurrent action columns | the race studies, `cross-sweep`, `tdstdp-baseline`, `hybrid-columns*` | `python -m models.tdstdp --task CartPole ...` |
 
+Each file keeps its training loop and command line; the objects and methods it uses live in `helpers/` and are
+re-exported, so `models.basic.Agent` or `models.tdstdp.load_ck_model` work as before:
+
+| Helper | Holds |
+| --- | --- |
+| `tasks.py` | the task registry and encoders (both models) |
+| `agent.py` | basic: parameters, `Config`, `Agent`, `match_scales` |
+| `basic_io.py` | basic: result names, checkpoints, frozen episodes, `save_model` |
+| `basic_stats.py` | basic: the M2/M3 summaries, ablation table, fidelity, iteration 012 diagnostics |
+| `basic_cli.py` | basic: file-name tokens, QIF / LIF override flags |
+| `runner.py` | tdstdp: parameters, `Config`, presets, `Runner`, `CKRunner` |
+| `calibration.py` | tdstdp: the pre-run calibrations and the race re-probe |
+| `tdstdp_io.py` | tdstdp: result records, solve times, `save_ck_model`, `load_ck_model` |
+| `tdstdp_stats.py` | tdstdp: `group_stats` and the `--summary` table |
+
 Both write to `experiments/results/` by default. Until 2026-11-02 they were `experiments/tasks.py`, `experiments/m2.py`,
 `experiments/m3.py` and `experiments/tdstdp.py`; the commands in older manifests and iteration records use those paths
 (`experiments.m2` and `experiments.m3` are now `models.basic`, `experiments.tdstdp` is `models.tdstdp`).

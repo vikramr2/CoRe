@@ -15,6 +15,7 @@ import pytest
 from experiments import report
 from mapstdp import lif
 from models import tdstdp as ex
+from models.helpers import calibration
 
 
 def test_onehot_encoder():
@@ -413,7 +414,7 @@ def test_race_reprobe(monkeypatch, tmp_path):
     def spy(q, n_states, rtol):
         seen.append((q.rng.bit_generator.state, q.cfg.race_beta, q.cfg.block, q.frozen))
         return orig(q, n_states, rtol)
-    monkeypatch.setattr(ex, "_race_probe", spy)
+    monkeypatch.setattr(calibration, "_race_probe", spy)  # where calibrate_race looks it up
     base = dataclasses.replace(cfg, rec="none", race_beta=0.0, race_reprobe=0)
     ex.calibrate_race(base)
     ref = ex.CKRunner(dataclasses.replace(base, adam=False, sgd=False, block=ex.MS), rng_seed=ex.CAL_SEED, frozen=True)
@@ -646,7 +647,7 @@ def test_credit_tokens_and_asserts():
 def test_eta_cal_cartpole_uses_adam_steps(monkeypatch):
     """--eta-cal on CartPole calibrates against the authors' Adam steps (adam_step_c/a, the LunarLander config's), not
     the preset's SGD rates, which gave a 68-280x step (016 §20); presets whose eta are Adam steps are unchanged."""
-    monkeypatch.setattr(ex, "CAL_TICKS", 20)
+    monkeypatch.setattr(calibration, "CAL_TICKS", 20)  # where calibrate_ck reads it
     cp = ex.preset("CartPole", seed=0, engine="nlif", s_in=0.1, rate_target=40.0, block=20, fast=True, sgd=True,
                    adam=False)
     assert (cp.adam_step_c, cp.adam_step_a) == (1.25e-4, 6.25e-5) and (cp.eta_c, cp.eta_a) == (0.005, 0.01)
@@ -872,16 +873,16 @@ def test_reprobe_fit_gate(monkeypatch, capsys):
             return dict(theta=runner.theta, episode=int(episode), beta=beta, win0=[0.0] * 5,
                         win0_surrogate=[fit, 0.0, 0.0, 0.0, 0.0])
         return probe
-    monkeypatch.setattr(ex, "reprobe_race", fake(0.3, 9.0))
+    monkeypatch.setattr(calibration, "reprobe_race", fake(0.3, 9.0))
     rec = ex.reprobe_step(r, 50)
     assert r.beta == 6.0 and rec["accepted"] is False and ex.race_fit(rec) == pytest.approx(0.3)
     assert "reprobe ep 50 beta 9 fit 0.300 rejected" in capsys.readouterr().out
-    monkeypatch.setattr(ex, "reprobe_race", fake(0.01, 9.0))
+    monkeypatch.setattr(calibration, "reprobe_race", fake(0.01, 9.0))
     rec2 = ex.reprobe_step(r, 100)
     assert r.beta == 9.0 and "accepted" not in rec2 and r.race_cal_history == [rec, rec2]
     out = capsys.readouterr().out
     assert "reprobe ep 100 beta 9 fit 0.010" in out and "rejected" not in out
-    monkeypatch.setattr(ex, "reprobe_race", fake(0.05, 3.0))
+    monkeypatch.setattr(calibration, "reprobe_race", fake(0.05, 3.0))
     assert "accepted" not in ex.reprobe_step(r, 150) and r.beta == 3.0
     hist = ex.result_ck(cfg, r, 0.0, None, 0)["race_cal_history"]
     assert [x.get("accepted", True) for x in hist] == [False, True, True]
@@ -1013,7 +1014,7 @@ def test_race_fit_gate_option(monkeypatch):
     q = _race_runner(race_fit_gate=float("inf"))
     assert "fginf" in ex.name(q.cfg)
     rec = {"beta": 9.0, "win0": [0.0, 0.5, 1.0], "win0_surrogate": [0.3, 0.5, 0.7], "episode": 50}  # fit 0.3
-    monkeypatch.setattr(ex, "reprobe_race", lambda runner, ep: dict(rec))
+    monkeypatch.setattr(calibration, "reprobe_race", lambda runner, ep: dict(rec))
     b0 = r.beta
     ex.reprobe_step(r, 50)
     assert r.beta == b0 and r.race_cal_history[-1].get("accepted", True) is False
