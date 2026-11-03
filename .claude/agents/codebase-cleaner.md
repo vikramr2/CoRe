@@ -8,6 +8,7 @@ You clean up the Map-STDP code without changing its behavior. Start by reading `
 
 - `mapstdp/`
 - `experiments/*.py`
+- `models/*.py`, `models/helpers/*.py`
 - `tests/`
 - `.claude/skills/*/scripts/`
 - `.claude/hooks/`
@@ -25,7 +26,8 @@ Run everything from the repo root with the `map-stdp` env active and `OMP_NUM_TH
 
 - **`mapstdp/core.py`:** the numpy flow-level reference. It holds the network, flow, module statistics, modulators, plasticity rules and the encoder. It imports only numpy.
 - **`mapstdp/spiking.py`:** the SuperNeuroMAT backend. It imports numpy and superneuromat, never `core`.
-- **`experiments/*.py`:** milestone scripts. Each one is a CLI over `mapstdp`, and its module constants (`ALPHA`, `ETA`, `SIZES`, …) are its config. `experiments/` may import `mapstdp` and other experiment modules, but `mapstdp` never imports `experiments`.
+- **`models/*.py`:** the two main models, `basic.py` (Map-STDP: task registry, agent, runner) and `tdstdp.py` (the TD-STDP backbone). Each keeps its training loop and CLI and re-exports (`__all__`) the objects and methods it uses from `models/helpers/` (one module per concern; `tasks.py` is shared). Helpers never import `models.basic` or `models.tdstdp` (that would be circular); `models/` imports only `mapstdp` and itself. A test that monkeypatches a helper's name must patch the helper module, where the code looks it up.
+- **`experiments/*.py`:** study, analysis and milestone scripts. Each one is a CLI over `mapstdp`, and its module constants (`ALPHA`, `ETA`, `SIZES`, …) are its config. `experiments/` may import `mapstdp`, `models` and other experiment modules, but `mapstdp` never imports `experiments` (only `mapstdp/lif.py`'s self-check imports `models.basic`'s task registry).
 - **`tests/`:** the behaviour lock. **`.claude/skills/derivation-check/scripts/fdcheck.py`** is standalone, so keep it import-free of `mapstdp`.
 - **Style:** match the surrounding code. That means compact numpy, short math names from the derivation (`W`, `pi`, `kappa`, `m`, `roles`, `K`, `J`, `p`, `q`, `g`, `h`, `e`), one-line docstrings that cite the equation or section they implement (`Eq. 4b`, `derivation §2.2`), and comments only for the why.
   - Don't convert module constants to config dataclasses.
@@ -43,7 +45,7 @@ Run everything from the repo root with the `map-stdp` env active and `OMP_NUM_TH
    - the two module self-checks;
    - five fixed-seed closed-loop runs (flow and spiking; v1, v2, v3; routing exempt, dual and none), compared bit for bit with `tests/golden.json`;
    - the spiking pairing counts and race readout;
-   - `m2.summary()` reading every saved result.
+   - `basic.summary_m2()` reading every saved result.
 
    If tests already fail, report that and don't refactor the failing code paths.
 2. **Survey.** List the problems before editing anything:
@@ -91,10 +93,10 @@ Run everything from the repo root with the `map-stdp` env active and `OMP_NUM_TH
 **Keep formats and interfaces.** Don't change:
 
 - the CLI flags or their defaults;
-- the result-file names (`m2_<backend>_<routing>_lam<λ>[_b..][_eta..][_at..]_<model>_s<seed>.json`, `m2.py --summary` globs `m2_*.json`, so other outputs must not use that prefix);
+- the result-file names (`m2_<backend>_<routing>_lam<λ>[_b..][_eta..][_at..]_<model>_s<seed>.json`, `basic.py --m2-summary` globs `m2_*.json`, so other outputs must not use that prefix);
 - the JSON keys or the `params` dict.
 
-Old results must still load in `m2.py --summary`.
+Old results must still load in `basic.py --m2-summary`.
 
 **Don't touch the zips.** `ruff.toml` turns B905 off because the code relies on zip truncation. Never add `strict=True`.
 
@@ -102,7 +104,7 @@ Old results must still load in `m2.py --summary`.
 
 **Don't add features, dependencies or abstractions nobody asked for.** Three similar lines can be better than a premature helper.
 
-**Keep refactors within test coverage.** The suite covers `mapstdp/` and the `experiments/m2.py` agent. If you want to restructure beyond a rename or move in code it doesn't cover (`experiments/m1.py`, the skill scripts and the hooks), propose the change and don't make it. For a rename there, run the script's own smoke check:
+**Keep refactors within test coverage.** The suite covers `mapstdp/` and the `models/basic.py` agent. If you want to restructure beyond a rename or move in code it doesn't cover (`experiments/m1.py`, the skill scripts and the hooks), propose the change and don't make it. For a rename there, run the script's own smoke check:
 
 - `python .claude/skills/derivation-check/scripts/fdcheck.py --selftest`
 
