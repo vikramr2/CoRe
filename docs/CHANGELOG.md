@@ -1,5 +1,41 @@
 # Changelog
 
+## 2026-11-02
+
+### Fixed: `.gitignore` hid study groups named by a decimal
+
+- **Problem.** The LaTeX rule `*.[1-9]` matched `reports/cross-sweep/runs/<task>_px0.1/`, `_px0.2/` and `_px0.5/`, so 90 of the study's 210 runs would have been left out of the commit without a warning.
+- **Fix.** `!reports/*/runs/*/` re-includes every study group directory.
+
+### Added: iteration 018 §8, results of the map-term-on sweep (development)
+
+- **Runs.** All 210 finished with no failure (`experiments/results/pilot018on/`). Not reported; that decision is the user's.
+- **Pre-registered tests.** No on − off difference survives Holm on any task or metric, and no task has a trend in p_cross.
+- **Predictions.** CartPole on ≈ off: supported. Acrobot gain growing with p_cross: not supported (ρ +0.08). LunarLander: reversed; AUC unchanged, last-100 lower at every p_cross > 0 (pooled, exploratory: −11.8, 17/60, p 0.0004).
+- **Reading.** The map term seals the walk on every task (within ≥ 0.96). On Acrobot it removes every failed run but does not reach sealed's mean above p_cross 0.05; on LunarLander forced sealing costs final return. No task gets a better operating point than its best map-term-off wiring.
+
+### Added: iteration 018 §7, the cross-wiring sweep with the map term on (user request; pre-registered, launched)
+
+- **What it runs.** The same 7 p_cross points × 3 tasks × seeds 20–29 as `cross-sweep`, with `--lam 1` in place of `--lam 0`: 210 runs into `experiments/results/pilot018on/`, from the `cross-sweep` worktree with `tdstdp` unchanged.
+- **Question.** Can learned sealing replace enforced sealing?
+- **Headline.** The paired on − off difference at each p_cross. Predictions, stated before the runs:
+  - Acrobot: on − off grows with p_cross.
+  - CartPole: on ≈ off.
+  - LunarLander: the map term gives up some of the AUC that cross wiring brings; last-100 flat.
+
+### Added: study `cross-sweep`, the iteration 018 dev sweep reported as final (user decision)
+
+- **What it is.** Implicit race columns (map term off) at seven cross-column connection probabilities, from `--p-cross 0` (sealed) to 0.5 (no modular structure). It covers CartPole, Acrobot and LunarLander on dev seeds 20–29: 210 runs, none failed.
+- **Decision (user).** The dev curves are reported as the experiment's final result, and the pre-registered fresh-seed confirmation is not run.
+  - The runs were copied unchanged (sha256 checked) from `experiments/results/pilot018/` into `reports/cross-sweep/runs/`. This is a one-off exception to "only `experiments.report` writes into `reports/`".
+  - The study is declared in `report.py` (`_cross_sweep`) and summarised by the runner.
+  - The study README records the deviations: n = 10, dev seeds that also chose the race settings, no confirmation.
+- **Result.**
+  - Sealed is best on CartPole and Acrobot. On Acrobot the cost grows with cross wiring, and only sealed solves any run.
+  - LunarLander's last-100 return is flat across the grid, while its AUC rises with cross wiring.
+  - No task has an interior optimum on its primary metric.
+  - Most per-point tests do not survive Holm at n = 10; `docs/iterations/018-cross-wiring-sweep.md` §5–6 has the numbers.
+
 ## 2026-11-01
 
 ### Added: `--p-cross` on the TD-STDP runner and the iteration 018 pre-registration (user request)

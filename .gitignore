@@ -488,3 +488,6 @@ archive/
 # The replay pages live on branch viz (GitHub Pages); experiments/m2_viz.py writes into replay/ by default
 replay.html
 replay/
+
+# Study groups named by a decimal (cross-sweep `<task>_px0.1`) match the LaTeX rules `*.[1-9]` above
+!reports/*/runs/*/
