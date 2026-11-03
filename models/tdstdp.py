@@ -1,13 +1,13 @@
 """Iteration 013 step 1: the feed-forward TD-STDP actor-critic of Chung & Kozma 2020 [CK] (arXiv:2008.13044,
 mapstdp/tdstdp.py) in closed loop on CartPole and LunarLander. Run from the repo root:
-  python -m experiments.tdstdp --task {CartPole,LunarLander} --seed 0 [--adam | --no-adam | --eta-cal] [--heads H]
+  python -m models.tdstdp --task {CartPole,LunarLander} --seed 0 [--adam | --no-adam | --eta-cal] [--heads H]
     [--block B] [--episodes E] [--engine {numpy,snm,lif,flow,nlif}] [--s-in S] [--legacy [--rate0 p]
     [--engine lif-snm]] [--rec {cols,lat} [--chi-rec X] [--lam L] [--lam-ratio r] [--save-model PATH] ...]
     -> experiments/results/tdstdp_<task>[_ck][_<tokens>]_s<seed>.json   (tokens: options off the preset, in order
        adam | noadam | sgd (= --eta-cal), B<B>, h<H>, ep<E>, r<rate0> (legacy), fast, si<S>, engine snm | lif |
        lifsnm | flow | nlif)
     [--out PATH]   (result path; the default above; experiments.report uses it to write reports/<study>/runs/)
-  python -m experiments.tdstdp --summary   -> per group: T_f, T_s, solved fraction, last-100 return, ms per frame,
+  python -m models.tdstdp --summary   -> per group: T_f, T_s, solved fraction, last-100 return, ms per frame,
        next to CK's Table 2 and the model v4 (flow, spiking) returns
 Default (token ck): the authors' code, reference/td_stdp (commit a5cb7f4, BindsNET 0.2.7), where it disagrees with
 the paper (iteration 013 §8). PRESETS are config/config_cp.ini and config_ll.ini (eta in mV); weights convert to
@@ -98,11 +98,11 @@ import time
 import gymnasium as gym
 import numpy as np
 
-from experiments.tasks import FOURIER_BOUNDS, TASKS, Task, critic_layer, random_states
 from mapstdp import lif
 from mapstdp import tdstdp as td
+from models.basic import FOURIER_BOUNDS, TASKS, Task, critic_layer, random_states
 
-OUT = pathlib.Path(__file__).parent / "results"
+OUT = pathlib.Path(__file__).resolve().parent.parent / "experiments" / "results"  # the intermediates store
 TDSTDP_SEED, CAL_SEED, CAL_TICKS, FBAR_STATES, MV_LEGACY, MS, WARM_TICKS = 1302, 1303, 200, 5000, 1300.0, 20, 5
 MV, WARM_N = td.THETA_L, 5  # authors' code: mV per unit of branching weight; batch_envs warm_n (windows)
 PAPER = {"CartPole": dict(T_f=(57.0, 23.97), T_s=(169.5, 23.47)),
@@ -1543,7 +1543,7 @@ def result(cfg, r, t0, eta_sgd):
 
 
 def v4_returns(task):
-    """Last-100 returns over seeds of the model v4 runs (flow; spiking per heads and variant), from experiments.m3."""
+    """Last-100 returns over seeds of the model v4 runs (flow; spiking per heads and variant), from models.basic."""
     pat = re.compile(rf"m3_{task}_(flow|spiking_h\d+)_lb0\.3_tn0\.04_pcc0_bk0\.01m16(_\w+?)?_eta5_s\d+")
     out = {}
     for f in sorted(glob.glob(str(OUT / f"m3_{task}_*_eta5_s*.json"))):

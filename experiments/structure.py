@@ -2,7 +2,7 @@
 reports/<study>/models/<group>/s<seed>.npz). Run from the repo root:
   python -m experiments.structure <study>             -> reports/<study>/structure.csv, structure.md, structure_*.png
   python -m experiments.structure --models DIR [--out DIR] [--pair ON OFF ...]   (dev runs: any directory of groups)
-Per model and snapshot (W_ep<k>): weight shares by module block (m2.block_shares: within, C->A, C->L, A<->A, A<->L,
+Per model and snapshot (W_ep<k>): weight shares by module block (basic.block_shares: within, C->A, C->L, A<->A, A<->L,
 L<->L, ->C), the K x K module weight table WK[b, a] / sum W, and the map equation L (bits, Eq. 3) of W's own walk
 T = W/d under uniform teleportation (core.flow, alpha 0.2): an engine-free measure of how modular W is.
 Pairs (on, off) are compared at the last snapshot by two-sided Mann-Whitney; figures show the mean
@@ -17,8 +17,9 @@ import re
 import numpy as np
 from scipy.stats import mannwhitneyu
 
-from experiments import m2, report
+from experiments import report
 from mapstdp import core
+from models import basic
 
 BLOCKS = ("within", "C->A", "C->L", "A<->A", "A<->L", "L<->L", "->C")
 SEQ = ["#cde2fb", "#86b6ef", "#3987e5", "#1c5cab", "#0d366b"]  # sequential blue (dataviz palette, light mode)
@@ -61,7 +62,7 @@ def analyse(models):
             for ep in sorted(snaps):
                 W = snaps[ep]
                 rows.append(dict(group=gdir.name, seed=int(f.stem[1:]), episode=ep, task=cfg.get("task", ""),
-                                 lam=cfg.get("lam"), L_W=walk_L(W, m, K), **m2.block_shares(W, m, roles)))
+                                 lam=cfg.get("lam"), L_W=walk_L(W, m, K), **basic.block_shares(W, m, roles)))
             W = snaps[max(snaps)]
             final.setdefault(gdir.name, []).append((H.T @ W @ H / W.sum(), roles))
     return rows, final

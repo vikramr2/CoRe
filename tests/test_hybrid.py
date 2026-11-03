@@ -1,4 +1,4 @@
-"""The noisy-LIF engine of the TD-STDP backbone (experiments.tdstdp --engine nlif, iteration 015): the external-current
+"""The noisy-LIF engine of the TD-STDP backbone (models.tdstdp --engine nlif, iteration 015): the external-current
 kernel compiled == interpreted (lif._kernel_ext_{nb,py}, both noise modes, recurrent kicks on an index set), its
 noise-free limit == BindsNET's LIF (tdstdp self-check (h1)), the episode reset of the membranes, and a checkpoint round
 trip of an nlif run."""
@@ -7,9 +7,9 @@ import dataclasses
 import numpy as np
 import pytest
 
-from experiments import tdstdp as ex
 from mapstdp import lif
 from mapstdp import tdstdp as td
+from models import tdstdp as ex
 
 
 @pytest.mark.parametrize("fast", [True, False])

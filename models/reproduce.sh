@@ -11,7 +11,7 @@ EXTRA=""; [ "$STUDY" = race-cartpole ] && EXTRA="--race-fit-gate inf"
 cd "$(dirname "$0")/.."
 export OMP_NUM_THREADS=1 MKL_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 NUMBA_NUM_THREADS=1
 mkdir -p archive/models/$STUDY logs/models/$STUDY
-python - "$STUDY" "$ARMS" "$EXTRA" <<'PY' | sed "s/ *$//" | xargs -P $W -L 1 bash -c 'python -m experiments.tdstdp "${@:1}" > logs/models/'"$STUDY"'/$0.log 2>&1; echo "$0 rc $?"'
+python - "$STUDY" "$ARMS" "$EXTRA" <<'PY' | sed "s/ *$//" | xargs -P $W -L 1 bash -c 'python -m models.tdstdp "${@:1}" > logs/models/'"$STUDY"'/$0.log 2>&1; echo "$0 rc $?"'
 import re, sys
 from experiments import report
 study, arms, extra = sys.argv[1], sys.argv[2], sys.argv[3].split()
@@ -19,7 +19,7 @@ for k, g in report.STUDIES[study]["groups"].items():
     if not re.search(arms, k):
         continue
     for sd in g["seeds"]:
-        cmd = report.study_command(study, k, sd)[3:]  # [python, -m, experiments.tdstdp, --task, ...] -> the flags
+        cmd = report.study_command(study, k, sd)[3:]  # [python, -m, models.tdstdp, --task, ...] -> the flags
         i = cmd.index("--out"); cmd[i + 1] = f"logs/models/{study}/{k}_s{sd}.json"  # the result JSON (and its
         # checkpoint while running) go to logs/, which is gitignored; the reported JSON is reports/<study>/runs/
         print(f"{k}_s{sd}", *cmd, *extra, "--save-model", f"archive/models/{study}/{k}/s{sd}.npz")

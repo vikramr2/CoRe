@@ -4,6 +4,19 @@ The best run of each arm of the race-readout studies on the TD-STDP backbone (it
 `docs/columns-recipe.md`) and of the Map-STDP study `emergent-v4` (model v4, the emergent rule on CartPole), one `.npz`
 per arm, plus the scripts that reproduce, verify and run the race models.
 
+## The model code
+
+The two main models live here as importable modules, next to their saved weights. Run them from the repo root:
+
+| Module | Model | Studies | Run |
+| --- | --- | --- | --- |
+| `basic.py` | Map-STDP: models v3/v4 and the emergent rule (task registry, `Config`, `Agent`, `run`, the per-task CLI) | `emergent-v4` and the M2/M3 runs | `python -m models.basic --task CartPole ...` |
+| `tdstdp.py` | The TD-STDP backbone of Chung & Kozma 2020 with the race readout and recurrent action columns | the race studies, `cross-sweep`, `tdstdp-baseline`, `hybrid-columns*` | `python -m models.tdstdp --task CartPole ...` |
+
+Both write to `experiments/results/` by default. Until 2026-11-02 they were `experiments/tasks.py`, `experiments/m2.py`,
+`experiments/m3.py` and `experiments/tdstdp.py`; the commands in older manifests and iteration records use those paths
+(`experiments.m2` and `experiments.m3` are now `models.basic`, `experiments.tdstdp` is `models.tdstdp`).
+
 **Every model is in `archive/models/`** (gitignored, 316 MB, to be kept on a server): all 320 race runs, one `.npz`
 per run in the same `<study>/<arm>/s<seed>.npz` layout, and a copy of the 240 emergent-v4 models. `reproduce.sh` writes
 there; this directory keeps the copies of the best runs only.
@@ -73,7 +86,7 @@ Run one with plasticity off through the ablation tool, which reads the final β 
 python -m experiments.ablate --family v4 --model models/emergent-v4/CartPole_lif_on/s2017.npz --run reports/emergent-v4/runs/CartPole_lif_on/s2017.json --out X.json
 ```
 
-## What a race model file holds (`save_ck_model`, `experiments/tdstdp.py`)
+## What a race model file holds (`save_ck_model`, `models/tdstdp.py`)
 
 - `W`: the final input→post weights (n_post × n_in, CK units: mV before the trace scaling), rows = critic E, critic I, then per action the actor E (and I) posts; `sign`: +1 / −1 per post.
 - `config`: the run's full `Config` as JSON after calibration, so `s_in`, `alpha_a`, `alpha_c`, `eta_c`, `eta_a` (after `--eta-cal`), `race_beta`, `race_theta`, `freeze`, `rate_floor`, `c_t` and the column flags are the values the run used; `n_in`, `n_ce`, `n_ci`, `n_ae`, `n_ai`, `K`, `n_lat`; `episodes_run`; `beta` (the race surrogate's gain at the end); `eta_sgd_mV`, `s_cal`, `rec_cal` (the calibration records).

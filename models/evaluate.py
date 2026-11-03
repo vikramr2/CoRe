@@ -9,7 +9,7 @@ import numpy as np
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))  # run as a script from the repo root
 
-from experiments import tdstdp
+from models import tdstdp
 
 ap = argparse.ArgumentParser()
 ap.add_argument("model")

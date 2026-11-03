@@ -144,18 +144,18 @@ def simulate_bindsnet(W, x_prev, x, v):
 
 
 def simulate_nlif(W, x_prev, x, st, rng, p, s_in, Bt=None, ridx=(), score=False):
-    """Noisy-LIF engine (experiments.tdstdp --engine nlif): lif.simulate_ext with p.dt = 1 ms = one CK step. W in mV
+    """Noisy-LIF engine (models.tdstdp --engine nlif): lif.simulate_ext with p.dt = 1 ms = one CK step. W in mV
     (as simulate_bindsnet); feed-forward current Iext(t) = s_in x(t-1) W^T / THETA_L in threshold units (s_in = 1: a
     BindsNET spike's mV over its 13 mV gap), x(-1) = x_prev (H x n_in); leak, background noise and refractory period
     of p on every post; recurrent kicks Bt on the posts ridx (none by default). st: lif state (V, ref, z), mutated and
     carried across blocks. One rng draw. Returns (X, xsum, xsq): X is L x H x n_post bool; with score=True also the
-    kernel's (M, GN) for lif.post_scores (the score credit of experiments.tdstdp; same draws)."""
+    kernel's (M, GN) for lif.post_scores (the score credit of models.tdstdp; same draws)."""
     Iext = (s_in / THETA_L) * (np.concatenate([x_prev[None], x[:-1]]) @ W.T)
     return lif.simulate_ext(Iext, np.zeros((0, 0)) if Bt is None else Bt, ridx, st, rng, p, score)
 
 
 def check_score_eligibility(H=150000, L=20, seed=11, s_in=0.5):
-    """Self-check (h4; experiments.tdstdp --credit, derivation Appendix A): the actor rows' score eligibility, as
+    """Self-check (h4; models.tdstdp --credit, derivation Appendix A): the actor rows' score eligibility, as
     CKRunner.learn_block builds it, is the REINFORCE estimate of d E[R] / dW. One actor E post (Layout(2, 0, 0, 1, 0,
     1)), two Bernoulli input units (one shared spike train over H trajectories), the nlif kernel at the DT1R point with
     W (mV) at a free-membrane mean of 1.3, R = the L-ms spike count. block_learn_ck_fast is driven exactly as the
@@ -246,7 +246,7 @@ class HybridRec:
     one-hop psi^h_ij = s_hm(i) - sbar_hj, sbar_hj = sum_b T_bj s_hb (Eq. 4b; s: K' module scores, CK's action score
     alpha_a (A_b - p_b) / n_ae on action modules, 0 on latents), paired with the counter of the window whose rates gave
     p; the task step is eta_R mean_h (sum_t delta_ht) e_h (task_dir). Statistics frame = stat_windows windows (frame):
-    the observed walk (core.observed_walk_modules, EMA over obs_tau frames as experiments.m2), the map modulator
+    the observed walk (core.observed_walk_modules, EMA over obs_tau frames as models.basic), the map modulator
     (core.modulator; minus core.latent_output_barrier with la_beta), the structural increment -(g - gbar^obs) c / n
     (Eq. 4, c and kappa divided by the frame's spikes) applied with lam, then the d_j homeostasis (Eq. 4d) with the
     frame's spike shares. Monitors per frame, averaged into log at flush(). No rng after init."""

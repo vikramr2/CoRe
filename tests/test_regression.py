@@ -10,8 +10,8 @@ import gymnasium as gym
 import numpy as np
 import pytest
 
-from experiments import m2
 from mapstdp import spiking as sp
+from models import basic
 
 GOLDEN = pathlib.Path(__file__).parent / "golden.json"
 CASES = [("flow", "exempt", 0.05, "v3"), ("spiking", "exempt", 0.05, "v3")]  # (backend, routing, lam, model tag)
@@ -19,8 +19,8 @@ REMOVED = ("mu", "q_star")  # dual-routing (Eq. 4a) state, removed in iteration 
 
 
 def fingerprint(backend, routing, lam, model, episodes=3):
-    assert model == m2.MODEL, "models v1 and v2 were removed in iteration 013"
-    agent, env = m2.Agent(m2.Config(backend, routing, lam, 0)), gym.make("CartPole-v1")
+    assert model == basic.MODEL, "models v1 and v2 were removed in iteration 013"
+    agent, env = basic.Agent(basic.Config(backend, routing, lam, 0)), gym.make("CartPole-v1")
     returns = [agent.episode(env) for _ in range(episodes)]
     ev = agent.evaluate(kl_obs=3, kl_reps=5)
     return {"returns": returns, "W_sum": float(agent.W.sum()), "W_sq": float((agent.W ** 2).sum()),
@@ -46,7 +46,7 @@ def test_m2_reproduces_golden(case):
 
 
 def test_summary_reads_all_results(capsys):
-    m2.summary()  # every m2_*.json in experiments/results must parse as an m2 run
+    basic.summary_m2()  # every m2_*.json in experiments/results must parse as an m2 run
     assert "random policy" in capsys.readouterr().out
 
 

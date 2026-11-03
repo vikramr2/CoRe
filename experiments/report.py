@@ -7,9 +7,9 @@ intermediates store: dev, tuning and diagnostic runs, and the default output of 
   python -m experiments.report summarize <study>   -> reports/<study>/summary.csv, summary.md, from runs/ only
 Studies are declared in STUDIES: groups -> (task, engine, flags, seeds), a reference group per task (Mann-Whitney) and
 gates (minimum solved count). A reference "<study>/<group>" names a group of another study (a companion study added
-under a later code state compares against it without rerunning it). Statistics are experiments.tdstdp.group_stats,
+under a later code state compares against it without rerunning it). Statistics are models.tdstdp.group_stats,
 the same as tdstdp --summary.
-A study's `runner` is "tdstdp" (default: experiments.tdstdp, the statistics above) or "m3" (experiments.m3 with
+A study's `runner` is "tdstdp" (default: models.tdstdp, the statistics above) or "m3" (models.basic with
 M3_ENGINE_FLAG[engine], --out and --save-model reports/<study>/models/<group>/s<seed>.npz; statistics m3_stats; a
 study's `pairs` lists (on, off[, family]) groups compared by two-sided Mann-Whitney, Holm-adjusted per metric within
 a family) or "ablate" (experiments.ablate on a saved model, --family per group, the model at <models>/s<seed>.npz;
@@ -30,14 +30,14 @@ import time
 
 import numpy as np
 
-from experiments import m2, tdstdp
+from models import basic, tdstdp
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 REPORTS = ROOT / "reports"
 LOGS = ROOT / "logs" / "report"
 ENGINE_FLAG = {"lif": ["--engine", "lif"], "branching": [],  # branching = the numpy engine (tdstdp default)
                "flow": ["--engine", "flow"], "nlif": ["--engine", "nlif"]}  # nlif: noisy LIF (iteration 015)
-M3_ENGINE_FLAG = {"flow": ["--backend", "flow"],  # runner 'm3': engine -> experiments.m3 flags (heads per study)
+M3_ENGINE_FLAG = {"flow": ["--backend", "flow"],  # runner 'm3': engine -> models.basic flags (heads per study)
                   "branching": ["--backend", "spiking", "--engine", "numpy"],
                   "qif": ["--backend", "spiking", "--engine", "qif"],
                   "lif": ["--backend", "spiking", "--engine", "lif"]}
@@ -360,14 +360,14 @@ COLUMNS = ["group", "task", "engine", "flags", "n_declared", "n", "solved", "T_f
 
 
 def command(g, seed, out, runner="tdstdp", model=None):
-    """The run's command line: experiments.tdstdp, or for runner 'm3' experiments.m3 (model: --save-model path)."""
+    """The run's command line: models.tdstdp, or for runner 'm3' models.basic (model: --save-model path)."""
     if runner == "ablate":
         return [sys.executable, "-m", "experiments.ablate", "--family", g["family"], "--model",
                 f"{g['models']}/s{seed}.npz", *g["flags"], "--out", str(out)]
     if runner == "m3":
-        return [sys.executable, "-m", "experiments.m3", "--task", g["task"], "--seed", str(seed),
+        return [sys.executable, "-m", "models.basic", "--task", g["task"], "--seed", str(seed),
                 *M3_ENGINE_FLAG[g["engine"]], *g["flags"], "--out", str(out), "--save-model", str(model)]
-    return [sys.executable, "-m", "experiments.tdstdp", "--task", g["task"], "--seed", str(seed),
+    return [sys.executable, "-m", "models.tdstdp", "--task", g["task"], "--seed", str(seed),
             *ENGINE_FLAG[g["engine"]], *g["flags"], "--out", str(out)]
 
 
@@ -387,10 +387,10 @@ def study_command(study, k, sd):
 
 
 def code_state():
-    """(patch, sha256): `git diff HEAD` of mapstdp/ and experiments/ (results excluded) plus every untracked file there,
-    as a patch; sha256 of the patch bytes ('' if the tree is clean)."""
+    """(patch, sha256): `git diff HEAD` of mapstdp/, experiments/ (results excluded) and models/*.py plus every
+    untracked file there, as a patch; sha256 of the patch bytes ('' if the tree is clean)."""
     git = lambda *a: subprocess.run(["git", *a], cwd=ROOT, capture_output=True, text=True).stdout  # noqa: E731
-    spec = ["--", "mapstdp", "experiments", ":(exclude)experiments/results"]
+    spec = ["--", "mapstdp", "experiments", ":(glob)models/*.py", ":(exclude)experiments/results"]
     patch = git("diff", "HEAD", *spec)
     for f in git("ls-files", "--others", "--exclude-standard", *spec).split():
         patch += git("diff", "--no-index", "--", "/dev/null", f)
@@ -578,7 +578,7 @@ def summarize(study, root=REPORTS, studies=None):
 
 
 def m3_stats(task, rs):
-    """Summary statistics of one group of experiments.m3 runs: AUC = mean return over all episodes (training
+    """Summary statistics of one group of models.basic runs: AUC = mean return over all episodes (training
     efficiency), last-100 return, the frozen-W return (mean of each run's frozen_returns), the count of runs whose
     trailing-100 mean reaches M3_THR[task] (and the first such episode, T_m), the held-out L_obs and D at the first
     and last evaluation (mean, and sd at the end), ms per frame and resumes. Means and sds over runs (ddof 0)."""
@@ -680,7 +680,7 @@ def summarize_m3(study, s, d):
           f"Generated by `python -m experiments.report summarize {study}` from `runs/` only. Code: git "
           f"`{man.get('git_head', '?')[:7]}`, patch sha256 `{man.get('code_sha256', '?')[:12]}`.", "",
           "Columns: AUC = mean return over all episodes; return = last-100 mean; frozen = mean return of "
-          f"{m2.FROZEN_EPIS} end-of-run episodes with W frozen; each mean ± sd over seeds (ddof 0); "
+          f"{basic.FROZEN_EPIS} end-of-run episodes with W frozen; each mean ± sd over seeds (ddof 0); "
           "thr = runs whose trailing-100 mean reaches the threshold, $T_m$ the first such episode; $L_{obs}$ and $D$ = "
           "held-out description length (bits) of the engine's observed walk and of the flow walk, first eval → last "
           "eval (sd).", ""]
@@ -747,8 +747,8 @@ def summarize_ablate(study, s, d):
     Holm within the contrast family."""
     from scipy.stats import mannwhitneyu, wilcoxon
 
-    from experiments.tasks import TASKS
-    rand = {t: m2.random_return(200, task=TASKS[t])[0] for t in {g["task"] for g in s["groups"].values()}}
+    from models.basic import TASKS
+    rand = {t: basic.random_return(200, task=TASKS[t])[0] for t in {g["task"] for g in s["groups"].values()}}
     runs = {k: load_runs(d, k) for k in s["groups"]}
     rows, delta = [], {}
     for k, g in s["groups"].items():

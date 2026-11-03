@@ -1,4 +1,4 @@
-"""Iteration 016: the TD-STDP backbone on Acrobot and Taxi (experiments.tdstdp PRESETS by pre-set rules): the one-hot
+"""Iteration 016: the TD-STDP backbone on Acrobot and Taxi (models.tdstdp PRESETS by pre-set rules): the one-hot
 encoder, the presets' sizes, a short closed loop with recurrent columns, k from CartPole's BindsNET rate, the r_scale
 rule and the hybrid-columns-2 study declaration; the race readout of §14.1 Stage B (the decision, the theta rule, the
 surrogate's gradient, closed loops, calibrate_race, tokens); the score credit of §20 Stage B' (lif.post_scores, the
@@ -13,8 +13,8 @@ import numpy as np
 import pytest
 
 from experiments import report
-from experiments import tdstdp as ex
 from mapstdp import lif
+from models import tdstdp as ex
 
 
 def test_onehot_encoder():

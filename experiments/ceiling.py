@@ -30,15 +30,15 @@ from functools import lru_cache
 import gymnasium as gym
 import numpy as np
 
-from experiments import m2
-from experiments.tasks import TASKS
 from mapstdp import core
+from models import basic
+from models.basic import TASKS
 
 POP, ELITE, ITERS, EPIS, FINAL = 64, 8, 80, 4, 100  # CEM population, elites, iterations, episodes/candidate, final
 WMIN, WMAX, TD_NORM, LA_BETA = 1e-3, 1.0, 0.04, 0.3
 
 
-def hop_operator(W, alpha=m2.ALPHA, n=m2.N_HOPS):
+def hop_operator(W, alpha=basic.ALPHA, n=basic.N_HOPS):
     """M with pi_n = M v for core.flow(W, v, alpha, n): M_0 = I, M_{k+1} = (1 - alpha) T M_k + alpha I (Eq. 1a)."""
     B, M = (1 - alpha) * W / W.sum(0), np.eye(len(W))
     for _ in range(n):
@@ -112,7 +112,7 @@ def rollouts(R, agent, env, readout, seeds, nmax=NMAX, stats=None):
 
 def trained_agent(task, seed, encoder=None, train=True):
     """The Map-STDP flow agent after the task's training episodes (the M3 flow reference with --td-norm)."""
-    agent = m2.Agent(m2.Config("flow", seed=seed, la_beta=LA_BETA, task=task, td_norm=TD_NORM, encoder=encoder))
+    agent = basic.Agent(basic.Config("flow", seed=seed, la_beta=LA_BETA, task=task, td_norm=TD_NORM, encoder=encoder))
     env, R = gym.make(agent.task.env_id), []
     for _ in range(agent.task.episodes if train else 0):
         R.append(agent.episode(env))
@@ -141,7 +141,8 @@ def run(task, level, readout, seed, nmax=NMAX, encoder=None, train=True):
     R0 = action_matrix(W0, agent)
     v = agent.held[0]  # R reproduces the agent's own Eq. 1d policy
     assert np.allclose(R0 @ v[agent.ctrl] / (R0 @ v[agent.ctrl]).sum(),
-                       core.policy(np.bincount(agent.m, core.flow(W0, v, m2.ALPHA, m2.N_HOPS), agent.K), agent.roles))
+                       core.policy(np.bincount(agent.m, core.flow(W0, v, basic.ALPHA, basic.N_HOPS), agent.K),
+                                   agent.roles))
     log = lambda s: print(f"{task} L{level} {readout}: {s} ({(time.perf_counter() - t0) / 60:.1f} min)", flush=True)  # noqa: E731
     log(f"trained, last100 training return {train_ret:.1f}" if train else "untrained (level 1)")
     if level == "learned":
@@ -171,13 +172,13 @@ def run(task, level, readout, seed, nmax=NMAX, encoder=None, train=True):
                    deadline_frac=float(np.mean([d for _, d in st])), R=R.tolist())
     suffix = "" if level == "learned" else f"_{readout}" + (f"_n{nmax}" if st and nmax != NMAX else "")
     suffix += f"_enc{encoder}" if encoder else ""
-    (m2.OUT / f"ceiling_{task}_L{level}{suffix}_s{seed}.json").write_text(json.dumps(res))
+    (basic.OUT / f"ceiling_{task}_L{level}{suffix}_s{seed}.json").write_text(json.dumps(res))
     log(f"final {res['final_mean']:.1f} +- {res['final_sd']:.1f} over {FINAL} fresh episodes")
 
 
 def summary():
     rows = {}
-    for f in sorted(glob.glob(str(m2.OUT / "ceiling_*.json"))):
+    for f in sorted(glob.glob(str(basic.OUT / "ceiling_*.json"))):
         r = json.loads(pathlib.Path(f).read_text())
         rows.setdefault(r["task"], []).append(r)
     for task, rs in rows.items():

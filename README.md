@@ -60,9 +60,9 @@ spiking engines branching, QIF and LIF (`--backend spiking --engine numpy | qif 
 `--lam 0 --p-cross 0` for sealed modules:
 
 ```bash
-python -m experiments.m3 --task CartPole --seed 0 --backend flow --rule emergent --td-norm 0.04 --p-cc 0 \
+python -m models.basic --task CartPole --seed 0 --backend flow --rule emergent --td-norm 0.04 --p-cc 0 \
     --beta-kappa 0.01 --eta 5 --beta-max 16 --lam 0.05 --episodes 1500 --save-model v4_flow.npz
-python -m experiments.m3 --task CartPole --seed 0 --backend spiking --engine lif --rule emergent --td-norm 0.04 \
+python -m models.basic --task CartPole --seed 0 --backend spiking --engine lif --rule emergent --td-norm 0.04 \
     --p-cc 0 --beta-kappa 0.01 --eta 5 --beta-max 1.6 --heads 8 --readout diffbound --match-scales --lam 0.05 \
     --episodes 1500 --save-model v4_lif.npz
 ```
@@ -71,12 +71,12 @@ python -m experiments.m3 --task CartPole --seed 0 --backend spiking --engine lif
 
 ```bash
 # CartPole: the published backbone, then sealed columns with the race readout
-python -m experiments.tdstdp --task CartPole --seed 0 --engine nlif --rate-target 40 --block 20 --fast \
+python -m models.tdstdp --task CartPole --seed 0 --engine nlif --rate-target 40 --block 20 --fast \
     --rate-match-rec --ent-match-rec --save-model ck.npz
-python -m experiments.tdstdp --task CartPole --seed 0 --engine nlif --rate-target 40 --block 20 --fast \
+python -m models.tdstdp --task CartPole --seed 0 --engine nlif --rate-target 40 --block 20 --fast \
     --rate-match-rec --readout race --race-reprobe 50 --chi-rec 0.3 --rec cols --rec-seal --lam 0 --save-model race.npz
 # LunarLander: implicit columns with the race readout (10000 episodes; hours per run)
-python -m experiments.tdstdp --task LunarLander --seed 0 --engine nlif --rate-target 40 --block 20 --fast \
+python -m models.tdstdp --task LunarLander --seed 0 --engine nlif --rate-target 40 --block 20 --fast \
     --rate-match-rec --eta-cal --readout race --rate-cost 5e-4 --rate-floor 0.5 --race-theta 26 --chi-rec 0.3 \
     --rec cols --lam 0 --save-model ll.npz
 ```

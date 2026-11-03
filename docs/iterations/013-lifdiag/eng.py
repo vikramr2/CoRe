@@ -13,10 +13,10 @@ SP = "/tmp/claude-26504/-home-vr9-map-stdp/de3951c9-83d8-41b5-ab74-0f748b322531/
 
 
 def network(task, trained):
-    from experiments import m2
-    cfg = m2.Config("flow", seed=0, la_beta=0.3, task=task, td_norm=0.04, p_cc=0.0, beta_kappa=0.01,
+    from models import basic
+    cfg = basic.Config("flow", seed=0, la_beta=0.3, task=task, td_norm=0.04, p_cc=0.0, beta_kappa=0.01,
                     beta_max=16.0, eta=5.0)
-    ag = m2.Agent(cfg)
+    ag = basic.Agent(cfg)
     W = pickle.load(open(f"{SP}qif/trained/{task}_s0.pkl", "rb"))["W"] if trained else ag.W
     return dict(W=W, m=ag.m, roles=ag.roles, mask=ag.mask, held=ag.held, K=len(ag.roles), N=len(W))
 

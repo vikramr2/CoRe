@@ -1,4 +1,4 @@
-"""The emergent-walk Map-STDP rule (m2.Config.rule = 'emergent', derivation Eqs. 8-12) and its run plumbing: flow
+"""The emergent-walk Map-STDP rule (basic.Config.rule = 'emergent', derivation Eqs. 8-12) and its run plumbing: flow
 emergent == v4 bit for bit, the general formulas reproduce v4 on flow inputs, the exact branching counter (Eq. 11a)
 against a loop, the QIF and LIF frames (Eq. 11b: shapes, signs, state isolation; QIF: v4's raster), checkpoint round
 trips and resume, --save-model, and experiments.report (tdstdp summaries unchanged, the m3 runner's summary)."""
@@ -10,22 +10,23 @@ import gymnasium as gym
 import numpy as np
 import pytest
 
-from experiments import m2, report
+from experiments import report
 from mapstdp import core
 from mapstdp import spiking as sp
+from models import basic
 
 V4 = dict(td_norm=0.04, p_cc=0.0, beta_kappa=0.01, beta_max=16.0, eta=5.0, la_beta=0.3)
 
 
 def train(cfg, episodes=3):
-    agent = m2.Agent(cfg)
+    agent = basic.Agent(cfg)
     env = gym.make(agent.task.env_id)
     return agent, [agent.episode(env) for _ in range(episodes)]
 
 
 def test_flow_emergent_is_v4_bit_for_bit():
-    a, ra = train(m2.Config(**V4))
-    b, rb = train(m2.Config(rule="emergent", **V4))
+    a, ra = train(basic.Config(**V4))
+    b, rb = train(basic.Config(rule="emergent", **V4))
     assert ra == rb and (a.W == b.W).all() and (a.u == b.u).all() and a.beta == b.beta
     ea, eb = a.evaluate(), b.evaluate()
     assert all(ea[k] == eb[k] for k in ea) and eb["L_obs"] == eb["D"]
@@ -33,7 +34,7 @@ def test_flow_emergent_is_v4_bit_for_bit():
 
 
 def test_emergent_formulas_reproduce_v4_on_flow():
-    agent, _ = train(m2.Config(rule="emergent", ebar="obs", **V4), 2)
+    agent, _ = train(basic.Config(rule="emergent", ebar="obs", **V4), 2)
     W, m, roles = agent.W, agent.m, agent.roles
     for f, v in enumerate(agent.held[:5]):
         pi = agent.walk(v)
@@ -78,18 +79,18 @@ def test_branching_counter_brute_force(seed):
 
 
 def test_checkpoint_round_trip(tmp_path):
-    cfg = m2.Config("spiking", heads=4, engine="numpy", rule="emergent", obs_tau=5.0, **{**V4, "beta_kappa": 0.0})
+    cfg = basic.Config("spiking", heads=4, engine="numpy", rule="emergent", obs_tau=5.0, **{**V4, "beta_kappa": 0.0})
     a, _ = train(cfg, 2)
     snaps = {"W_ep0": a.W.astype(np.float32)}
     ck = tmp_path / "r.ckpt.npz"
-    m2.save_checkpoint(ck, a, [1.0, 2.0], [{"episode": 0}], snaps, 0, 3.5)
-    b = m2.Agent(cfg)
-    returns, evals, sn, resumes, wall = m2.load_checkpoint(ck, b)
+    basic.save_checkpoint(ck, a, [1.0, 2.0], [{"episode": 0}], snaps, 0, 3.5)
+    b = basic.Agent(cfg)
+    returns, evals, sn, resumes, wall = basic.load_checkpoint(ck, b)
     assert (returns, evals, resumes, wall) == ([1.0, 2.0], [{"episode": 0}], 0, 3.5)
     assert (sn["W_ep0"] == snaps["W_ep0"]).all()
     assert (a.W == b.W).all() and (a.u == b.u).all() and a.rng.bit_generator.state == b.rng.bit_generator.state
     assert all((x == y).all() for x, y in zip(a.run_obs, b.run_obs))
-    for k in m2.Agent.STATE:
+    for k in basic.Agent.STATE:
         if hasattr(a, k):
             x, y = getattr(a, k), getattr(b, k)
             assert json.dumps(x, default=lambda o: o.tolist()) == json.dumps(y, default=lambda o: o.tolist()), k
@@ -98,23 +99,23 @@ def test_checkpoint_round_trip(tmp_path):
 
 
 def test_run_resume_and_save_model(tmp_path, monkeypatch):
-    cfg = m2.Config(rule="emergent", **V4)
-    monkeypatch.setattr(m2, "LOG_EVERY", 1)
-    monkeypatch.setattr(m2, "SAVE_EVERY", 2)
-    full = m2.run(cfg, 4, out=tmp_path / "full.json", save_model_path=tmp_path / "full.npz")
-    calls, episode = [0], m2.Agent.episode
+    cfg = basic.Config(rule="emergent", **V4)
+    monkeypatch.setattr(basic, "LOG_EVERY", 1)
+    monkeypatch.setattr(basic, "SAVE_EVERY", 2)
+    full = basic.run(cfg, 4, out=tmp_path / "full.json", save_model_path=tmp_path / "full.npz")
+    calls, episode = [0], basic.Agent.episode
 
     def dies(self, env):
         calls[0] += 1
         if calls[0] == 3:
             raise KeyboardInterrupt
         return episode(self, env)
-    monkeypatch.setattr(m2.Agent, "episode", dies)
+    monkeypatch.setattr(basic.Agent, "episode", dies)
     with pytest.raises(KeyboardInterrupt):
-        m2.run(cfg, 4, out=tmp_path / "cut.json", save_model_path=tmp_path / "cut.npz")
+        basic.run(cfg, 4, out=tmp_path / "cut.json", save_model_path=tmp_path / "cut.npz")
     assert (tmp_path / "cut.ckpt.npz").exists()
-    monkeypatch.setattr(m2.Agent, "episode", episode)
-    cut = m2.run(cfg, 4, out=tmp_path / "cut.json", save_model_path=tmp_path / "cut.npz")
+    monkeypatch.setattr(basic.Agent, "episode", episode)
+    cut = basic.run(cfg, 4, out=tmp_path / "cut.json", save_model_path=tmp_path / "cut.npz")
     assert not (tmp_path / "cut.ckpt.npz").exists() and cut["resumes"] == 1 and full["resumes"] == 0
     assert cut["returns"] == full["returns"] and json.dumps(cut["emergent"]) == json.dumps(full["emergent"])
     z, zc = np.load(tmp_path / "full.npz"), np.load(tmp_path / "cut.npz")
@@ -127,8 +128,8 @@ def test_qif_emergent_frame():
     """engine='qif', rule='emergent' (Eq. 11b): the training raster equals rule v4's for the same rng (the counters
     draw nothing), shapes and signs of (S, kappa_raw, c), c only on synapses, the gain estimate updated by training
     frames only, evaluate's frames leave the training state alone, and the gain sums survive a checkpoint."""
-    a = m2.Agent(m2.Config("spiking", engine="qif", heads=2))
-    b = m2.Agent(m2.Config("spiking", engine="qif", heads=2, rule="emergent"))
+    a = basic.Agent(basic.Config("spiking", engine="qif", heads=2))
+    b = basic.Agent(basic.Config("spiking", engine="qif", heads=2, rule="emergent"))
     N, k = len(b.W), b.qp.k
     for f, v in enumerate(b.held[:4]):
         Sa = a.spike_frame(v)
@@ -145,7 +146,7 @@ def test_qif_emergent_frame():
     pi, ob, act = b.frame(b.held[6])
     assert np.isclose(pi.sum(), 1) and ob.c.shape == (N, N) and 0 <= act < len(b.A)
     arr, meta = b.state()
-    fresh = m2.Agent(m2.Config("spiking", engine="qif", heads=2, rule="emergent"))
+    fresh = basic.Agent(basic.Config("spiking", engine="qif", heads=2, rule="emergent"))
     fresh.load_state(arr, meta)
     assert fresh.qgain.n == b.qgain.n and (fresh.qgain.sxr == b.qgain.sxr).all()
     assert (fresh.qgain.rbar == b.qgain.rbar).all()
@@ -156,9 +157,9 @@ def test_lif_emergent_frame():
     rng leaves the training state, the training rng and the carried gain alone, the gain moments (regression counter)
     persist across episodes and survive a checkpoint round trip, and the episode continues identically after it."""
     with pytest.raises(AssertionError):
-        m2.Agent(m2.Config("spiking", engine="lif", heads=2))
-    cfg = m2.Config("spiking", engine="lif", heads=2, rule="emergent", lif={"counter": "regression"})
-    a = m2.Agent(cfg)
+        basic.Agent(basic.Config("spiking", engine="lif", heads=2))
+    cfg = basic.Config("spiking", engine="lif", heads=2, rule="emergent", lif={"counter": "regression"})
+    a = basic.Agent(cfg)
     N, k = len(a.W), a.lp.k
     for v in a.held[:3]:
         S, kraw, c = a.counter_frame(v, a.rng)
@@ -175,7 +176,7 @@ def test_lif_emergent_frame():
     n1 = a.lcarry[1]["n"]
     assert n1 > 3  # the moments carried into the new episode's state
     arr, meta = a.state()
-    b = m2.Agent(cfg)
+    b = basic.Agent(cfg)
     b.load_state(arr, meta)
     assert b.lcarry[1]["n"] == n1 and all((b.lcarry[1][x] == a.lcarry[1][x]).all() for x in ("m", "r", "mm", "mr"))
     assert a.episode(env) == b.episode(gym.make(b.task.env_id)) and (a.W == b.W).all()
@@ -220,7 +221,7 @@ def test_report_m3_summary(tmp_path):
     prs = list(csv.DictReader(open(tmp_path / "m3fake" / "pairs.csv")))
     assert [r["family"] for r in prs] == ["primary", "other"] and all(r["auc_p"] == r["auc_p_holm"] for r in prs)
     cmd = report.command(studies["m3fake"]["groups"]["on"], 3, "o.json", "m3", "m.npz")
-    assert cmd[1:] == ["-m", "experiments.m3", "--task", "CartPole", "--seed", "3", "--backend", "flow", "--lam",
+    assert cmd[1:] == ["-m", "models.basic", "--task", "CartPole", "--seed", "3", "--backend", "flow", "--lam",
                        "0.05", "--out", "o.json", "--save-model", "m.npz"]
 
 
@@ -245,7 +246,7 @@ def test_lif_kernels_agree():
     import dataclasses
 
     from mapstdp import lif
-    a = m2.Agent(m2.Config("spiking", engine="lif", heads=16, rule="emergent", **V4 | {"beta_kappa": 0}))
+    a = basic.Agent(basic.Config("spiking", engine="lif", heads=16, rule="emergent", **V4 | {"beta_kappa": 0}))
     rates = {}
     for kern in ("np", "nb", "nbf"):
         p, rng = dataclasses.replace(a.lp, kernel=kern), np.random.default_rng(3)
@@ -258,7 +259,7 @@ def test_lif_kernels_agree():
 
 def test_p_cross_zero_seals_modules():
     """--p-cross 0: no cross-module synapse outside the routing pairs; every other synapse as in the default build."""
-    a, b = m2.Agent(m2.Config(p_cc=0.0, p_cross=0.0)), m2.Agent(m2.Config(p_cc=0.0))
+    a, b = basic.Agent(basic.Config(p_cc=0.0, p_cross=0.0)), basic.Agent(basic.Config(p_cc=0.0))
     t = a.roles[a.m]
     cross = (a.m[:, None] != a.m[None, :]) & ~((t[None, :] == "C") & np.isin(t[:, None], ["A", "L"]))
     assert not a.mask[cross].any() and b.mask[cross].any() and (a.mask[~cross] == b.mask[~cross]).all()

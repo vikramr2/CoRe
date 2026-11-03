@@ -5,8 +5,9 @@ import types
 
 import numpy as np
 
-from experiments import ablate, m2, report
-from experiments import tdstdp as ex
+from experiments import ablate, report
+from models import basic
+from models import tdstdp as ex
 
 
 def _v4_net(seed=0):
@@ -35,7 +36,7 @@ def test_v4_weights():
     assert (X[np.ix_(A, C)] == 0).all() and np.array_equal(X[~A], W[~A])
     X = ablate.v4_weights(W, m, roles, "lesion_L", True)
     assert np.allclose(X[L, L], ablate.EPS_LOOP) and (X.sum(0) > 0).all()
-    assert np.isfinite(m2.core.flow(X, np.r_[np.full(4, 0.25), np.zeros(10)], 0.2, 10)).all()
+    assert np.isfinite(basic.core.flow(X, np.r_[np.full(4, 0.25), np.zeros(10)], 0.2, 10)).all()
 
 
 def test_ck_kicks():
@@ -105,12 +106,12 @@ def test_run_ck_sealed(tmp_path):
 
 
 def test_run_v4_flow(tmp_path):
-    """A small flow model end to end: every condition runs; the intact frozen check reproduces m2.frozen_returns."""
-    a = m2.Agent(m2.Config())
+    """A small flow model end to end: every condition runs; the intact frozen check reproduces basic.frozen_returns."""
+    a = basic.Agent(basic.Config())
     p, run = tmp_path / "models" / "g" / "s0.npz", tmp_path / "runs" / "g" / "s0.json"
-    m2.save_model(p, a, {"W_ep0": a.W}, a.cfg)
+    basic.save_model(p, a, {"W_ep0": a.W}, a.cfg)
     run.parent.mkdir(parents=True)
-    run.write_text(json.dumps({"evals": [{"beta": a.beta}], "frozen_returns": m2.frozen_returns(a, 3)}))
+    run.write_text(json.dumps({"evals": [{"beta": a.beta}], "frozen_returns": basic.frozen_returns(a, 3)}))
     out = ablate.run_v4(str(p), str(run), 2, 0)
     assert list(out["conditions"]) == list(ablate.CONDITIONS["v4"])
     assert out["frozen_check"]["returns"][:3] == json.loads(run.read_text())["frozen_returns"]

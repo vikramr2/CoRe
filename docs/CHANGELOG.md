@@ -2,6 +2,19 @@
 
 ## 2026-11-02
 
+### Changed: the two main models move to `models/` (user decision)
+
+- **`models/basic.py`** is `experiments/tasks.py`, `experiments/m2.py` and `experiments/m3.py` merged into one module (user's choice of name and layout): the task registry, `Config`, `Agent`, `run` and the per-task runner with its command line.
+  - **Command line.** `python -m models.basic` takes m3's options. m2's results table is `--m2-summary` (`summary_m2`; m3's per-task table stays `--summary`).
+  - **Removed.** m2's own single-run command line. The M2 model is `--task CartPole --la-beta 0` with the same flags, but its runs are named `m3_*` and routing is always `exempt`.
+- **`models/tdstdp.py`** is `experiments/tdstdp.py`, unchanged apart from imports.
+- **What stays the same.** Both still write to `experiments/results/`. `models/` is now a package.
+- **Behaviour.** Unchanged: the golden tests are bit-identical and the suite passes.
+- **What was updated.**
+  - `report.py` now generates `models.basic` and `models.tdstdp` commands, and its code-state patch also covers `models/*.py`.
+  - Every importer (experiments, tests, `models/evaluate.py`, `reproduce.sh`) and the live docs (`CLAUDE.md`, `README.md`, `models/README.md`, `docs/model.md`, `docs/columns-recipe.md`, the `codebase-cleaner` agent).
+- **Old paths.** Manifests, iteration records and earlier CHANGELOG entries keep the old module paths as history. `models/README.md` gives the mapping.
+
 ### Removed: the replay recorders from `dev` (user decision)
 
 - **What.** `experiments/viz.py`, `experiments/m2_viz.py`, their `*_template.{html,css,js}` and `tests/test_viz.py`.

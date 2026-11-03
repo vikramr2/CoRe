@@ -2,8 +2,8 @@
 plasticity off. One run = one saved model evaluated under every condition of its family, on common random numbers
 (each condition restarts from the same evaluation stream), so the unit of the statistics is the model.
 
-Family 'v4' (emergent-v4 models, experiments.m2.Agent; W[post, pre], modules C, L1, L2, A1, A2): every engine divides a
-neuron's outgoing weights by their sum (T = W / d), so a cut either loses the drive (lesion: the cut neuron's own
+Family 'v4' (emergent-v4 models, models.basic.Agent; W[post, pre], modules C, L1, L2, A1, A2): every engine divides
+a neuron's outgoing weights by their sum (T = W / d), so a cut either loses the drive (lesion: the cut neuron's own
 outgoing weights go, its targets' input from it is gone, nobody else's d changes) or reroutes it (removal: cutting a
 neuron's targets renormalises the rest of its outgoing weights). Conditions:
   intact            the saved model;
@@ -16,9 +16,10 @@ neuron's targets renormalises the rest of its outgoing weights). Conditions:
                     latents, so actions are reached only through them.
 Flow backend: a column of zeros has d = 0 (core.flow divides unguarded), so a cut latent keeps a 1e-12 self-loop: flow
 that enters it stays there, which leaves the controller's and the actions' flow, hence the policy, as if it were
-discarded. A frame with no action flow (flow) or no decision (spiking, m2's silent frames) takes a uniform action.
+discarded. A frame with no action flow (flow) or no decision (spiking, the basic model's silent frames) takes a
+uniform action.
 
-Family 'ck' (race-study models, experiments.tdstdp.load_ck_model; HybridRec kicks b = chi R / d over the actor E
+Family 'ck' (race-study models, models.tdstdp.load_ck_model; HybridRec kicks b = chi R / d over the actor E
 posts, modules = action columns): the lesions keep the intact d (the cut drive is lost, not rerouted):
   intact            the saved model;
   rec_off           every recurrent kick removed (b = 0);
@@ -32,7 +33,7 @@ without columns, under the same evaluation.
 Per condition: the returns of n episodes (ck: the first ceil(n / H) episodes of each copy, so short episodes are not
 over-sampled), and monitors (v4: silent-frame share, flow or spike shares of the action and latent modules, spikes per
 head and frame, the policy shift on the held-out stimuli; ck: actor spikes per decision and to the decision, race
-decisions at the bound / deadline / tie). v4 also re-runs m2.frozen_returns on the intact model and compares it with
+decisions at the bound / deadline / tie). v4 also re-runs basic.frozen_returns on the intact model and compares it with
 the training run's record (flow, branching and LIF reproduce it exactly; QIF's warm state is not saved).
 
 Usage: python -m experiments.ablate --family v4|ck --model PATH [--run PATH] [--episodes N] [--seed S] --out PATH"""
@@ -47,8 +48,8 @@ import time
 import gymnasium as gym
 import numpy as np
 
-from experiments import m2, tdstdp
 from mapstdp import core
+from models import basic, tdstdp
 
 CONDITIONS = {"v4": ("intact", "lesion_L", "lesion_L1", "lesion_L2", "remove_L", "latent_path_only"),
               "ck": ("intact", "rec_off", "cross_lesion", "within_lesion", "rec_untrained")}
@@ -91,7 +92,7 @@ def v4_agent(model, run):
     """(agent, final beta, the run's record) of an emergent-v4 model: the final snapshot and the last evaluation's
     beta (the adaptive beta of the readout)."""
     z = np.load(model, allow_pickle=False)
-    a = m2.Agent(m2.Config(**json.loads(str(z["config"]))))
+    a = basic.Agent(basic.Config(**json.loads(str(z["config"]))))
     assert np.array_equal(a.m, z["m"]) and np.array_equal(a.mask, z["mask"])
     last = max(int(k[4:]) for k in z.files if k.startswith("W_ep"))
     a.W = z[f"W_ep{last}"].astype(float)
@@ -101,7 +102,7 @@ def v4_agent(model, run):
 
 
 def v4_frame(a, v):
-    """m2.Agent.frame with plasticity off, plus (flow) a uniform action when no flow reaches the actions; returns
+    """basic.Agent.frame with plasticity off, plus (flow) a uniform action when no flow reaches the actions; returns
     (action, action share, latent share, spikes per head or None)."""
     m, roles = a.m, a.roles
     if a.backend in ("flow", "mpr"):
@@ -169,11 +170,11 @@ def run_v4(model, run, n, seed):
     flow = base.backend in ("flow", "mpr")
     W0 = base.W.copy()
     chk = copy.deepcopy(base)
-    fr = m2.frozen_returns(chk)
+    fr = basic.frozen_returns(chk)
     out = dict(family="v4", task=base.task.env_id.split("-")[0], backend=base.backend, engine=base.cfg.engine,
                lam=base.cfg.lam, beta=beta, seed=base.cfg.seed, frozen_check=dict(
                    returns=fr, recorded=rec.get("frozen_returns"), reproduced=fr == rec.get("frozen_returns")),
-               blocks=m2.block_shares(W0, base.m, base.roles), conditions={})
+               blocks=basic.block_shares(W0, base.m, base.roles), conditions={})
     P0 = None
     for cond in CONDITIONS["v4"]:
         a = copy.deepcopy(base)

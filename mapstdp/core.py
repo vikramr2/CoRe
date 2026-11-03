@@ -2,7 +2,7 @@
 
 Conventions (docs/derivation.md): W[i, j] is the synapse pre j -> post i, T = W / d with
 d_j = sum_i W[i, j], J[i, j] = pi_j T[i, j], module tables are indexed [b, a] = (post module, pre module).
-Logs are base 2 (bits). Task term: action-gated eligibility (Eq. 4b) here; TD critic in experiments/m2.py.
+Logs are base 2 (bits). Task term: action-gated eligibility (Eq. 4b) here; TD critic in models/basic.py.
 """
 import itertools
 
@@ -258,7 +258,7 @@ def sample_pairings(J, n, rng):
 # ---- emergent walk (Eqs. 8-12): the walk observed from spikes, a signed counter for the step ----------------------
 # Every statistic of the rule is needed only at module resolution: R[b, j] = sum_{i in b} kappa_ij (K x N, j's pair
 # counts by target module: a per-neuron count of a K-number module-activity broadcast, derivation Eq. 8). The
-# baselines, M*, e^obs and the running averages (obs_tau, experiments/m2.py) therefore need no per-synapse state.
+# baselines, M*, e^obs and the running averages (obs_tau, models/basic.py) therefore need no per-synapse state.
 
 
 def module_rows(X, m, K):

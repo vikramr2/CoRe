@@ -1,10 +1,10 @@
-"""Calibration of the diffbound readout (Eq. 1h) for a spiking engine: the table beta_eff(theta) that m2 inverts to
-set the bound from beta (m2.BOUND_CAL, BOUND_CAL_QIF, BOUND_CAL_LIF), by the method of iteration 010 §4.3.
+"""Calibration of the diffbound readout (Eq. 1h) for a spiking engine: the table beta_eff(theta) that models.basic
+inverts to set the bound from beta (basic.BOUND_CAL, BOUND_CAL_QIF, BOUND_CAL_LIF), by the method of iteration 010 §4.3.
   python -m experiments.bound_cal --engine lif --heads 16 MODEL.npz [MODEL.npz ...] [--frames 200] [--stimuli 20]
-For each trained model (m2.save_model .npz; its last W snapshot, task from its config): on the first --stimuli held-out
-stimuli, a fresh warm state per stimulus (qif: one warm-up frame; lif: the engine's in-frame warm-up), then --frames
-consecutive warm frames on that stimulus, each read by sp.diffbound (cap 1 per module, head and step, burn-in the
-engine's) at every theta of THETAS. beta_eff(theta) is the maximum-likelihood beta of Eq. 1e, P(a) ~ p_a^beta with p
+For each trained model (basic.save_model .npz; its last W snapshot, task from its config): on the first --stimuli
+held-out stimuli, a fresh warm state per stimulus (qif: one warm-up frame; lif: the engine's in-frame warm-up), then
+--frames consecutive warm frames on that stimulus, each read by sp.diffbound (cap 1 per module, head and step, burn-in
+the engine's) at every theta of THETAS. beta_eff(theta) is the maximum-likelihood beta of Eq. 1e, P(a) ~ p_a^beta with p
 the flow walk's action-module shares on the same W, over all decisions of the model; the table is the mean over
 models. Also reported: the deadline fraction (frames with no decision before the frame ends). The frames draw from
 default_rng(seed); nothing is written except the --out JSON (default: printed only)."""
@@ -14,9 +14,9 @@ import json
 import numpy as np
 from scipy.optimize import minimize_scalar
 
-from experiments import m2
 from mapstdp import core, lif, qif
 from mapstdp import spiking as sp
+from models import basic
 
 THETAS = (1, 2, 4, 8, 16, 32, 64)
 
@@ -32,7 +32,7 @@ def frames(agent, v, n, rng):
         run = lambda: qif.run_qif(agent.W, v, H, rng, agent.eta_q, st, agent.qp, agent.m, agent.roles)  # noqa: E731
         run()
         return [run() for _ in range(n)]
-    return [sp.run_heads(agent.W, v, H, m2.K_SPK, m2.RATE, rng, m2.THETA, 1 - m2.ALPHA) for _ in range(n)]
+    return [sp.run_heads(agent.W, v, H, basic.K_SPK, basic.RATE, rng, basic.THETA, 1 - basic.ALPHA) for _ in range(n)]
 
 
 def beta_ml(counts, P1):
@@ -50,7 +50,7 @@ def calibrate(path, engine, heads, n_frames, n_stim, seed):
     cfg = json.loads(str(z["config"]))
     snaps = sorted((k for k in z.files if k.startswith("W_ep")), key=lambda k: int(k[4:]))
     extra = dict(rule="emergent") if engine == "lif" else {}
-    agent = m2.Agent(m2.Config("spiking", task=cfg["task"], heads=heads, engine=engine, p_cc=cfg["p_cc"],
+    agent = basic.Agent(basic.Config("spiking", task=cfg["task"], heads=heads, engine=engine, p_cc=cfg["p_cc"],
                                seed=cfg["seed"], **extra))
     agent.W = np.array(z[snaps[-1]], float)
     rng = np.random.default_rng(seed)

@@ -1,9 +1,9 @@
 """Noisy LIF engine for the emergent-walk Map-STDP rule (derivation §2.1-2.2, §4.1-4.2, §5.3, §7; details D8).
 
-Wiring (for experiments/m2.py; nothing here imports m2)
+Wiring (for models/basic.py; nothing here imports it)
 --------------------------------------------------------
-The m2 contract for rule='emergent' engines is Agent.counter_frame(v, rng) -> (S, kappa_raw, c), all raw and summed
-over heads; obs_frame divides kappa_raw and c by the frame's total spikes. For engine='lif':
+The agent's contract (models/basic.py) for rule='emergent' engines is Agent.counter_frame(v, rng) -> (S, kappa_raw,
+c), all raw and summed over heads; obs_frame divides kappa_raw and c by the frame's total spikes. For engine='lif':
 
     p = lif.LIFParams()                          # or dataclasses.replace(LIFParams(), ...) from Config fields
     # episode start (every reset of the environment):
@@ -92,7 +92,7 @@ rng (one rng.integers draw). It has the same model and distributions as the nump
 stream: the external pulses are drawn as one Poisson count per head and step, spread over the support by v (Poisson
 splitting). The numpy loop (escape noise, record=True, or kernel='np') is the reference.
 
-External current (simulate_ext; the noisy-LIF engine of experiments.tdstdp, --engine nlif): _kernel_ext_{py,nb} take a
+External current (simulate_ext; the noisy-LIF engine of models.tdstdp, --engine nlif): _kernel_ext_{py,nb} take a
 given per-step current I[t, h, i] (signed; the caller's feed-forward input) in place of the teleport pulses, plus
 recurrent kicks on an index set (none = an empty set); same noise, leak, threshold and reset as _kernel_nb. At dt = 1 ms
 (CK's grid) the background point is DT1. With sigma_V = 0, mu_bg = 0, no refractory period and CK's tau and threshold
@@ -211,12 +211,12 @@ class LIFParams:
         return int(round(self.tau_ref / self.dt))
 
 
-# dt = 1 ms (CK's grid; experiments.tdstdp --engine nlif): calibrate(LIFParams(dt=1e-3, tau_ref=0)), the defaults'
+# dt = 1 ms (CK's grid; models.tdstdp --engine nlif): calibrate(LIFParams(dt=1e-3, tau_ref=0)), the defaults'
 # operating point (5 Hz, chi G = 0.5 in the homogeneous recurrent network); without recurrent input a neuron fires at
 # 2.5 Hz there. No refractory period, as CK's BindsNET posts: a 2 ms clamp caps the rate at 1/3 per ms, below their
 # initial LunarLander rate (0.36 per ms) and the critic's value range on CartPole (V = 2 rho - 0.2 needs rho ~ 0.6)
 DT1 = dict(dt=1e-3, tau_ref=0.0, mu_bg=0.5778, chi=0.01551)
-# the low-rate nlif regime (experiments.tdstdp --rate-target, iteration 015 step 3): the default 2 ms refractory period
+# the low-rate nlif regime (models.tdstdp --rate-target, iteration 015 step 3): the default 2 ms refractory period
 # at dt = 1 ms, calibrate(LIFParams(dt=1e-3)); rate ceiling 333 Hz; at 40 Hz the kernel's gain is 41 Hz / theta
 # (mu ~ 1.48), near its peak of ~46 at 15-20 Hz
 DT1R = dict(dt=1e-3, tau_ref=0.002, mu_bg=0.5778, chi=0.01575)
@@ -771,7 +771,7 @@ def run_lif(W, v, H, rng, state, p, return_stats=True):
 
 
 def counter_frame(W, v, H, rng, state, p):
-    """The m2 engine contract (Agent.counter_frame, rule 'emergent'): (S, kappa_raw, c), raw, summed over heads."""
+    """The agent's engine contract (Agent.counter_frame, rule 'emergent'): (S, kappa_raw, c), raw, summed over heads."""
     S, st = run_lif(W, v, H, rng, state, p)
     return S, st["kappa"], st["c"]
 
@@ -953,7 +953,7 @@ def _check_pairs(p, seed=0):
 
 
 def _score_check(p=None, H=200000, T=20, seed=7, verbose=True):
-    """Self-check (h) of post_scores (experiments.tdstdp --credit): (i) on a frozen random-input run of both numba
+    """Self-check (h) of post_scores (models.tdstdp --credit): (i) on a frozen random-input run of both numba
     kernels, each neuron's summed hazard equals its spike count within the martingale's s.d. (sum h (1 - h)); (ii) on a
     one-neuron toy (H trajectories of T steps, Bernoulli input spikes through one weight w, the free-membrane mean 1.3
     at the DT1R point), the 'noise' score's REINFORCE estimate of d E[R] / d w for R = the T-step spike count,
@@ -1075,7 +1075,7 @@ def _main():
           f"== definition; E_ij = kappa / n_j >= 0, mean E_ij / (r_i w) = {np.mean(E / a_chance[:, None]):.3f} "
           f"(1 = chance only)")
     # (e) operating point and stability on the v4 networks (p_cc = 0, flow-v4 sizes); ms/frame at H = 16
-    from experiments.tasks import TASKS
+    from models.basic import TASKS
     print("(e) v4 networks, H = 16, 30 warm frames, stimulus: a ring bump over the controller (peak share ~0.28), "
           "then 5 frames at peak share 0.75")
     for task in ("CartPole", "LunarLander"):
@@ -1143,7 +1143,7 @@ def _main():
     print(f"  simulate_ext, zero input: {r_ext:.2f} Hz, Siegert at mu_bg {r_bg:.2f} Hz (background without "
           f"recurrence; the recurrent operating point adds chi r0 = {DT1['chi'] * 5:.3f} theta for 5 Hz)")
     assert abs(r_ext / r_bg - 1) < 0.05, (r_ext, r_bg)
-    # (g) dt = 1 ms, mean-driven (the nlif posts of experiments.tdstdp): the kernel's Markov-chain gain (gain_markov)
+    # (g) dt = 1 ms, mean-driven (the nlif posts of models.tdstdp): the kernel's Markov-chain gain (gain_markov)
     # against simulate_ext with common random numbers, both noise modes; Siegert for contrast
     for kern, pg, mus in (("nbf", p1, (0.7, 3.0, 8.0)), ("nb", p1, (0.7, 3.0, 8.0)),
                           ("nbf", dataclasses.replace(p, **DT1R), (1.0, 1.5, 3.0))):
@@ -1161,7 +1161,7 @@ def _main():
             line.append(f"mu={mu:.1f}: sim {g_sim:5.1f}, Markov {g_mk:5.1f}, Siegert {g_sg:5.1f}")
             assert abs(g_mk / g_sim - 1) < 0.06, (kern, mu, g_sim, g_mk)
         print(f"(g) gain at dt = 1 ms, tau_ref {pk.tau_ref * 1e3:.0f} ms, kernel {kern}: " + "; ".join(line))
-    # (h) the post scores (post_scores; experiments.tdstdp --credit hazard | noise) at the DT1R point
+    # (h) the post scores (post_scores; models.tdstdp --credit hazard | noise) at the DT1R point
     out["score"] = _score_check()
     print(f"lif self-check ok ({time.time() - t0:.0f} s)")
     return out
