@@ -68,22 +68,22 @@ def _rec_cfg(**kw):
     return ex.preset("CartPole", seed=3, engine="nlif", s_in=0.94, block=20, fast=True, **kw)
 
 
-def test_rec_seal_drops_cross_module_synapses():
-    """--rec-seal: the unsealed draws restricted to within-module pairs (no cross-module synapse, same within mask)."""
-    a, b = (ex.CKRunner(_rec_cfg(rec="cols", eta_rec=1.0, lam_rec=1.0, rec_seal=s)).hr for s in (False, True))
+def test_rec_full_drops_cross_module_synapses():
+    """--rec-full: the partial draws restricted to within-module pairs (no cross-module synapse, same within mask)."""
+    a, b = (ex.CKRunner(_rec_cfg(rec="cols", eta_rec=1.0, lam_rec=1.0, rec_full=s)).hr for s in (False, True))
     same = a.m[:, None] == a.m[None, :]
     assert not b.mask[~same].any() and a.mask[~same].any() and np.array_equal(a.mask & same, b.mask)
-    assert "seal" in ex.tokens(_rec_cfg(rec="cols", rec_seal=True))
-    cal = [ex.calibrate_rec(_rec_cfg(rec="cols", rec_seal=s)) for s in (False, True)]  # shared rates per seed
+    assert "full" in ex.tokens(_rec_cfg(rec="cols", rec_full=True))
+    cal = [ex.calibrate_rec(_rec_cfg(rec="cols", rec_full=s)) for s in (False, True)]  # shared rates per seed
     assert cal[0][:2] == cal[1][:2] and cal[0][2]["rms_u"] > 1e-6
 
 
 def test_rec_p_cross_sweep():
-    """--p-cross (iteration 018): 0 is --rec-seal's R; the masks of one seed are nested in p_cross with the same
+    """--p-cross (iteration 018): 0 is --rec-full's R; the masks of one seed are nested in p_cross with the same
     within-module draws; the default keeps the name; calibrate_rec's rates do not depend on p_cross."""
     hr = {p: ex.CKRunner(_rec_cfg(rec="cols", eta_rec=1.0, lam_rec=1.0, p_cross=p)).hr for p in (0.0, 0.05, 0.2, 0.5)}
-    seal = ex.CKRunner(_rec_cfg(rec="cols", eta_rec=1.0, lam_rec=1.0, rec_seal=True)).hr
-    assert np.array_equal(hr[0.0].mask, seal.mask) and np.array_equal(hr[0.0].R, seal.R)
+    full = ex.CKRunner(_rec_cfg(rec="cols", eta_rec=1.0, lam_rec=1.0, rec_full=True)).hr
+    assert np.array_equal(hr[0.0].mask, full.mask) and np.array_equal(hr[0.0].R, full.R)
     same = hr[0.5].m[:, None] == hr[0.5].m[None, :]
     ps = sorted(hr)
     for a, b in zip(ps, ps[1:]):

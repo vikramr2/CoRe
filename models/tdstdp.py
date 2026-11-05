@@ -38,12 +38,13 @@ latent modules of n_ae posts ('lat'; input->latent W frozen at init, latent->act
 --la-beta). Kicks chi_rec R / d_j (--chi-rec). R learns by the one-hop task credit (eta_rec) and the map term (lam_rec,
 off with --lam 0) with d_j homeostasis; the counter's gain is the kernel's own transfer (lif.gain_markov). eta_rec and
 lam_rec are pre-set by calibrate_rec unless given (--eta-rec, --lam-rec); s_in and --eta-cal are calibrated without
-recurrence, so every arm of a seed shares them. --rec-seal drops R's cross-module synapses from the same draws
-(enforced modularity); --p-cross sets R's cross-module connection probability (0.05; within 0.5; iteration 018),
-0 being the sealed graph. Tokens after the engine: cols | lat, xr<chi_rec>, seal, px<p_cross>, lam0 | lam<l>,
-lr<lam_ratio>, lx<lam_rec>, er<eta_rec>, sw<stat_windows>, pw<pair_ms>, nl<n_lat_mod>, lb<la_beta> (off-default
-only, except the first two). The result's 'rec' holds the calibration and the monitors (HybridRec.log, one row per
-pooled-episode event); --save-model PATH writes R snapshots (episode 0, every SNAP_EVERY, end) with m, roles, mask.
+recurrence, so every arm of a seed shares them. --rec-full drops R's cross-module synapses from the same draws
+(full modularity; --rec-seal is its old name); --p-cross sets R's cross-module connection probability (0.05; within
+0.5; iteration 018), 0 being the full graph. Tokens after the engine: cols | lat, xr<chi_rec>, full (seal before
+2026-11-05), px<p_cross>, lam0 | lam<l>, lr<lam_ratio>, lx<lam_rec>, er<eta_rec>, sw<stat_windows>, pw<pair_ms>,
+nl<n_lat_mod>, lb<la_beta> (off-default only, except the first two). The result's 'rec' holds the calibration and
+the monitors (HybridRec.log, one row per pooled-episode event); --save-model PATH writes R snapshots (episode 0,
+every SNAP_EVERY, end) with m, roles, mask.
 --readout race (iteration 016 §14.1 Stage B, engine nlif with --rate-target; token race): the softmax is replaced by a
 race on the columns' E spike counts (CKRunner.Mcnt: the excitatory posts of each column, §18; the opponent I posts
 shape the dynamics but are not tallied) at 1 ms resolution: the first column whose count since the copy's last
@@ -307,7 +308,7 @@ def main():
     ap.add_argument("--rec", choices=("none", "cols", "lat"), default="none",
                     help="nlif: recurrent E->E actor modules (iteration 015): cols, one per action; lat, + latents")
     for f, t, h in (("chi-rec", float, "rec: total kick per spike (threshold units)"),
-                    ("p-cross", float, "rec: R's cross-module connection probability (0.05; 0 = --rec-seal)"),
+                    ("p-cross", float, "rec: R's cross-module connection probability (0.05; 0 = --rec-full)"),
                     ("lam", float, "rec: map term multiplier (0 = off)"),
                     ("lam-ratio", float, "rec: lam_rec = ratio x RMS(task step) / RMS(structural step)"),
                     ("lam-rec", float, "rec: structural rate (default: calibrate_rec)"),
@@ -317,7 +318,8 @@ def main():
                     ("n-lat-mod", int, "rec lat: latent modules"),
                     ("la-beta", float, "rec lat: latent-output barrier")):
         ap.add_argument(f"--{f}", type=t, default=None, help=h)
-    ap.add_argument("--rec-seal", action="store_true", help="rec: no cross-module synapses in R (enforced modularity)")
+    ap.add_argument("--rec-full", action="store_true", help="rec: no cross-module synapses in R (full modularity)")
+    ap.add_argument("--rec-seal", action="store_true", dest="rec_full", help=argparse.SUPPRESS)  # --rec-full's old name
     ap.add_argument("--rate-match-rec", action="store_true",
                     help="nlif: calibrate s_in with the arm's recurrence on (every arm at the same initial rate)")
     ap.add_argument("--ent-match-rec", action="store_true",
@@ -356,8 +358,8 @@ def main():
                if v is not None})
     if a.rec != "none":
         kw["rec"] = a.rec
-    if a.rec_seal:
-        kw["rec_seal"] = True
+    if a.rec_full:
+        kw["rec_full"] = True
     if a.rate_match_rec:
         kw["rate_match_rec"] = True
     if a.ent_match_rec:

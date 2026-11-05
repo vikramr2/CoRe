@@ -44,7 +44,8 @@ def load_ck_model(path, rng_seed=TDSTDP_SEED):
     in the environment and appends episode returns to .returns. The saved config carries every calibrated value, so no
     calibration runs."""
     z = np.load(path, allow_pickle=False)
-    cfg = Config(**json.loads(str(z["config"])))
+    d = json.loads(str(z["config"]))
+    cfg = Config(**{"rec_full" if k == "rec_seal" else k: v for k, v in d.items()})  # rec_seal: rec_full's old name
     r = CKRunner(cfg, rng_seed=rng_seed, frozen=True)
     r.W[:] = z["W"]
     if r.hr is not None and "R" in z:

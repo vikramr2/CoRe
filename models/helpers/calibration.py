@@ -41,7 +41,7 @@ def probe_rate(cfg):
     """Mean post spike probability per ms (all posts and copies) over CAL_TICKS ticks after the first WARM_N + 1, W
     frozen at its init, on the (seed, CAL_SEED) stream; rule off (CKRunner.probe). Without recurrence (rec 'none'), so
     every rec arm gets the base run's s_in; with rate_match_rec (engine nlif) with the arm's R at init (its kicks,
-    sealed or not), so every arm starts at the same post rate (iteration 016 §10). The BindsNET reference probes of
+    full or not), so every arm starts at the same post rate (iteration 016 §10). The BindsNET reference probes of
     the calibrations (engine lif, rate_target 0) run without norm_logits: they measure CK's backbone."""
     rec = cfg.rec if cfg.rate_match_rec and cfg.engine == "nlif" else "none"
     r = CKRunner(dataclasses.replace(cfg, adam=False, sgd=False, block=MS, rec=rec), rng_seed=CAL_SEED, frozen=True)
@@ -276,10 +276,10 @@ def calibrate_rec(cfg):
     (seed, CAL_SEED) stream, over CAL_TICKS windows after the first WARM_N + 1: eta_rec gives R the actor W's relative
     step per window, eta_a RMS(g_actor) / RMS(W_actor) = eta_rec RMS(u) / RMS(R) (u = mean_h (sum_t delta) e_h, the
     task direction of a window; RMS over existing synapses); lam_rec = lam_ratio RMS(eta_rec x u summed over a frame) /
-    RMS(structural increment of a frame) (lam = 1). Measured on the unsealed default draws (rec_seal off, p_cross
-    0.05), so every arm of a seed shares the rates: with sealed R every target of j is in m(j), the one-hop credit
+    RMS(structural increment of a frame) (lam = 1). Measured on the partial default draws (rec_full off, p_cross
+    0.05), so every arm of a seed shares the rates: with full R every target of j is in m(j), the one-hop credit
     h_m(i) - hbar_j is exactly 0, and RMS(u) is rounding noise. Returns (eta_rec, lam_rec, dict of the RMS values)."""
-    r = CKRunner(dataclasses.replace(cfg, adam=False, sgd=False, eta_rec=1.0, lam_rec=0.0, rec_seal=False,
+    r = CKRunner(dataclasses.replace(cfg, adam=False, sgd=False, eta_rec=1.0, lam_rec=0.0, rec_full=False,
                                      p_cross=Config().p_cross),
                  rng_seed=CAL_SEED, frozen=True)
     for _ in range(WARM_N + 1):

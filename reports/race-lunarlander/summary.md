@@ -12,9 +12,9 @@ CK 2020 (10 runs, all solved): $T_f$ 383.8 ± 71.5, $T_s$ 2575.2 ± 666.5. Refer
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | `LunarLander_base_ck` | 20/20 | 0/20 | 1417.5 ± 356.0 [20] | – (inf) | – | 54.1 ± 15.2 | 8.52 | ref |  |
 | `LunarLander_base_race_e` | 20/20 | 0/20 | 1005.5 ± 387.5 [20] | – (inf) | – | 76.2 ± 12.7 | 8.72 | 0.0033 / 1 / 0.0001 |  |
-| `LunarLander_cols_lam0_race_e` | 20/20 | 0/20 | 1062.6 ± 291.4 [20] | – (inf) | – | 96.9 ± 21.1 | 9.53 | 0.0021 / 1 / 3.9e-07 |  |
-| `LunarLander_cols_on_race_e` | 20/20 | 0/20 | 1271.3 ± 377.4 [20] | – (inf) | – | 90.2 ± 12.8 | 8.82 | 0.25 / 1 / 9.1e-07 |  |
-| `LunarLander_cols_sealed_race_e` | 20/20 | 0/20 | 1223.4 ± 390.3 [20] | – (inf) | – | 89.9 ± 16.2 | 5.97 | 0.13 / 1 / 1.6e-06 |  |
+| `LunarLander_cols_partial_race_e` | 20/20 | 0/20 | 1062.6 ± 291.4 [20] | – (inf) | – | 96.9 ± 21.1 | 9.53 | 0.0021 / 1 / 3.9e-07 |  |
+| `LunarLander_cols_dynamic_race_e` | 20/20 | 0/20 | 1271.3 ± 377.4 [20] | – (inf) | – | 90.2 ± 12.8 | 8.82 | 0.25 / 1 / 9.1e-07 |  |
+| `LunarLander_cols_full_race_e` | 20/20 | 0/20 | 1223.4 ± 390.3 [20] | – (inf) | – | 89.9 ± 16.2 | 5.97 | 0.13 / 1 / 1.6e-06 |  |
 
 ## Pairs
 
@@ -23,10 +23,18 @@ Primary = CartPole AUC, LunarLander last-100 return. AUC = mean return over the 
 | Group | Against | Family | n | Primary shift [CI] (p, Holm) | AUC shift [CI] (p, Holm) | Return shift [CI] (p, Holm) |
 | --- | --- | --- | --- | --- | --- | --- |
 | `LunarLander_base_race_e` | `LunarLander_base_ck` | primary | 20/20 | +23.8 [+12.1, +32.3] (0.0001, 0.0001) | +1.2 [-4.2, +6.0] (0.71, 0.73) | +23.8 [+12.1, +32.3] (0.0001, 0.0001) |
-| `LunarLander_cols_lam0_race_e` | `LunarLander_base_ck` | primary | 20/20 | +41.1 [+30.9, +51.6] (3.9e-07, 1.6e-06) | -2.3 [-8.4, +3.4] (0.36, 0.73) | +41.1 [+30.9, +51.6] (3.9e-07, 1.6e-06) |
-| `LunarLander_cols_on_race_e` | `LunarLander_base_ck` | primary | 20/20 | +37.6 [+27.4, +46.5] (9.1e-07, 2.7e-06) | -2.3 [-5.7, +1.9] (0.24, 0.72) | +37.6 [+27.4, +46.5] (9.1e-07, 2.7e-06) |
-| `LunarLander_cols_sealed_race_e` | `LunarLander_base_ck` | primary | 20/20 | +35.9 [+25.6, +46.3] (1.6e-06, 3.2e-06) | -8.2 [-12.5, -4.0] (0.00013, 0.00052) | +35.9 [+25.6, +46.3] (1.6e-06, 3.2e-06) |
-| `LunarLander_cols_sealed_race_e` | `LunarLander_base_race_e` | secondary | 20/20 | +13.2 [+5.1, +21.5] (0.0036, 0.011) | -9.9 [-14.1, -4.7] (0.00092, 0.0037) | +13.2 [+5.1, +21.5] (0.0036, 0.011) |
-| `LunarLander_cols_on_race_e` | `LunarLander_base_race_e` | secondary | 20/20 | +13.5 [+6.0, +22.3] (0.0013, 0.0054) | -3.4 [-7.9, +0.8] (0.1, 0.2) | +13.5 [+6.0, +22.3] (0.0013, 0.0054) |
-| `LunarLander_cols_sealed_race_e` | `LunarLander_cols_lam0_race_e` | secondary | 20/20 | -5.2 [-14.3, +6.6] (0.38, 0.76) | -5.8 [-12.2, -0.9] (0.021, 0.062) | -5.2 [-14.3, +6.6] (0.38, 0.76) |
-| `LunarLander_cols_on_race_e` | `LunarLander_cols_lam0_race_e` | secondary | 20/20 | -3.1 [-14.2, +5.7] (0.47, 0.76) | -0.0 [-5.8, +5.5] (1, 1) | -3.1 [-14.2, +5.7] (0.47, 0.76) |
+| `LunarLander_cols_partial_race_e` | `LunarLander_base_ck` | primary | 20/20 | +41.1 [+30.9, +51.6] (3.9e-07, 1.6e-06) | -2.3 [-8.4, +3.4] (0.36, 0.73) | +41.1 [+30.9, +51.6] (3.9e-07, 1.6e-06) |
+| `LunarLander_cols_dynamic_race_e` | `LunarLander_base_ck` | primary | 20/20 | +37.6 [+27.4, +46.5] (9.1e-07, 2.7e-06) | -2.3 [-5.7, +1.9] (0.24, 0.72) | +37.6 [+27.4, +46.5] (9.1e-07, 2.7e-06) |
+| `LunarLander_cols_full_race_e` | `LunarLander_base_ck` | primary | 20/20 | +35.9 [+25.6, +46.3] (1.6e-06, 3.2e-06) | -8.2 [-12.5, -4.0] (0.00013, 0.00052) | +35.9 [+25.6, +46.3] (1.6e-06, 3.2e-06) |
+| `LunarLander_cols_full_race_e` | `LunarLander_base_race_e` | secondary | 20/20 | +13.2 [+5.1, +21.5] (0.0036, 0.011) | -9.9 [-14.1, -4.7] (0.00092, 0.0037) | +13.2 [+5.1, +21.5] (0.0036, 0.011) |
+| `LunarLander_cols_dynamic_race_e` | `LunarLander_base_race_e` | secondary | 20/20 | +13.5 [+6.0, +22.3] (0.0013, 0.0054) | -3.4 [-7.9, +0.8] (0.1, 0.2) | +13.5 [+6.0, +22.3] (0.0013, 0.0054) |
+| `LunarLander_cols_full_race_e` | `LunarLander_cols_partial_race_e` | secondary | 20/20 | -5.2 [-14.3, +6.6] (0.38, 0.76) | -5.8 [-12.2, -0.9] (0.021, 0.062) | -5.2 [-14.3, +6.6] (0.38, 0.76) |
+| `LunarLander_cols_dynamic_race_e` | `LunarLander_cols_partial_race_e` | secondary | 20/20 | -3.1 [-14.2, +5.7] (0.47, 0.76) | -0.0 [-5.8, +5.5] (1, 1) | -3.1 [-14.2, +5.7] (0.47, 0.76) |
+
+## Renamed groups
+
+Groups renamed 2026-11-05 (modularity regimes: partial = map term off, dynamic = map term on, full = no cross-module synapses); `runs/`, `models/` and the manifest were moved with them, the run files are unchanged.
+
+- `LunarLander_cols_partial_race_e` was `LunarLander_cols_lam0_race_e`
+- `LunarLander_cols_dynamic_race_e` was `LunarLander_cols_on_race_e`
+- `LunarLander_cols_full_race_e` was `LunarLander_cols_sealed_race_e`

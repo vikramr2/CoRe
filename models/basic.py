@@ -56,8 +56,8 @@ Config (one per run) holds every option; its defaults reproduce v3 on CartPole:
   p_cc: controller->controller connection probability of the SBM (core.build_network; 0.1 = M2). p_cc = 0 removes
     the C->C recurrence, whose neuron-level credit the module-level Eq. 4b cannot represent (iteration 006).
   p_cross: cross-module connection probability of the SBM outside the routing pairs (0.05 = M2). p_cross = 0 builds
-    the modules sealed, the structure the map term converges to (iteration 014): the control for "the map term helps"
-    versus "sealed modules help". The SBM draws are the same, so only the mask changes.
+    the modules with full modularity, the structure the map term converges to (iteration 014): the control for "the
+    map term helps" versus "full modularity helps". The SBM draws are the same, so only the mask changes.
   beta_kappa k, beta_max B: causal adaptive gain (Eq. 1g, Proposal), one global scalar: after each episode
     log beta += k z, z = (R_fast - R_slow) / sd(R) clipped to [-2, 2] (fast / slow running returns over BETA_TAU_F /
     BETA_TAU_S episodes), beta kept in [beta, B]. It rises while return improves and falls when it drops.
@@ -257,7 +257,7 @@ def main():
     ap.add_argument("--lam", type=float, default=0.05, help="structural (map) term rate; 0 = map-term ablation")
     ap.add_argument("--p-cc", type=float, default=0.1, help="controller->controller connection probability")
     ap.add_argument("--p-cross", type=float, default=0.05,
-                    help="cross-module (non-routing) connection probability; 0 = sealed modules (iteration 014)")
+                    help="cross-module (non-routing) connection probability; 0 = full modularity (iteration 014)")
     ap.add_argument("--beta", type=float, default=1.0, help="sharpened policy exponent (Eq. 1e, Proposal; flow)")
     ap.add_argument("--eta", type=float, default=None, help="task rate (default: model v3's)")
     ap.add_argument("--beta-kappa", type=float, default=0.0, help="causal adaptive beta gain (Eq. 1g; 0 = off)")

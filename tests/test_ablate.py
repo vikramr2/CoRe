@@ -40,7 +40,7 @@ def test_v4_weights():
 
 
 def test_ck_kicks():
-    """Lesions keep the intact d; rec_untrained uses R0 with its own d; on sealed R the cross-column lesion is the
+    """Lesions keep the intact d; rec_untrained uses R0 with its own d; on full R the cross-column lesion is the
     intact kicks."""
     rng = np.random.default_rng(1)
     m = np.repeat([0, 1], 3)
@@ -88,11 +88,11 @@ def test_summarize_ablate(tmp_path):
     assert (tmp_path / "summary.md").exists() and (tmp_path / "contrasts.csv").exists()
 
 
-def test_run_ck_sealed(tmp_path):
-    """A small sealed-column model end to end: every condition runs; the cross-column lesion of sealed columns is the
-    intact model (same returns on the same stream)."""
+def test_run_ck_full(tmp_path):
+    """A small full-modularity column model end to end: every condition runs; the cross-column lesion of full columns is
+    the intact model (same returns on the same stream)."""
     cfg = ex.preset("CartPole", seed=0, engine="nlif", s_in=0.1, rate_target=40.0, block=20, fast=True, readout="race",
-                    race_beta=6.0, rec="cols", chi_rec=0.3, lam=0.0, rec_seal=True, eta_rec=0.1, lam_rec=0.0)
+                    race_beta=6.0, rec="cols", chi_rec=0.3, lam=0.0, rec_full=True, eta_rec=0.1, lam_rec=0.0)
     r = ex.CKRunner(cfg)
     for _ in range(30):
         r.tick()

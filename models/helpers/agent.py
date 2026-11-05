@@ -72,7 +72,7 @@ class Config:
     td_norm: float = 0.0  # TD-error normalisation to this RMS (Proposal; 0 = off)
     ablate: dict = dataclasses.field(default_factory=dict)  # learning-rule ablations (iteration 005): wmin, tau_e
     p_cc: float = 0.1  # controller->controller connection probability
-    p_cross: float = 0.05  # cross-module (non-routing) connection probability; 0 = modules sealed from the start
+    p_cross: float = 0.05  # cross-module (non-routing) connection probability; 0 = full modularity from the start
     beta_kappa: float = 0.0  # adaptive beta gain (Eq. 1g; 0 = off)
     beta_max: float = 4.0  # upper bound of the adaptive beta
     gamma: float = GAMMA  # discount (Eq. 4c)
