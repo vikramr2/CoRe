@@ -1,6 +1,8 @@
 // The walk replay page (index.html on branch viz): experiments/viz.py writes data/; this file is js/replay.js.
 (() => {
   const $ = id => document.getElementById(id);
+  // the scroll hint scrolls without touching location.hash, which holds the model link (#<model id>[@<neuron>])
+  $('toText').addEventListener('click', e => { e.preventDefault(); $('tldr').scrollIntoView({ behavior: 'smooth' }); });
   const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
   const TOKENS = ['--ink','--muted','--rule','--edge','--hop','--body','--accent','--track','--ground','--flame','--panel',
                   '--stim','--lat1','--lat2','--critic','--act0','--act1','--act2','--act3'];
