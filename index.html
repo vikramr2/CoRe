@@ -3,22 +3,27 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Map-STDP Walk Replay</title>
+<title>CoRe: Community Recurrent SNNs</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Condensed:wght@400;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bodoni+Moda:ital,opsz,wght@0,6..96,400..700;1,6..96,400&family=IBM+Plex+Sans+Condensed:wght@400;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
 <link rel="stylesheet" href="css/replay.css">
 </head>
 <body>
 <div class="wrap">
-  <header>
-    <h1>Map-STDP: the walk, spike by spike</h1>
-    <div class="pick">
-      <label for="task">Task</label><select id="task"></select>
-      <label for="model">Model</label><select id="model"></select>
-      <span id="status"></span>
-    </div>
-    <span class="sub" id="subtitle"></span>
+  <header class="masthead">
+    <h1><b>CoRe</b>: Community Recurrent SNNs</h1>
+    <p class="tagline">the walk, spike by spike</p>
+    <p class="authors">
+      <a href="https://vikramramavarapu.org/">Vikram Ramavarapu</a>,
+      <a href="https://www.alphaxiv.org/@himanshu-udupi">Himanshu Udupi</a>,
+      <a href="https://www.ornl.gov/staff/ashish-gautam/">Ashish Gautam</a>
+    </p>
   </header>
+  <div class="pick">
+    <label for="task">Task</label><select id="task"></select>
+    <label for="model">Model</label><select id="model"></select>
+    <span id="status"></span>
+  </div>
   <div class="panes">
     <section class="pane">
       <h2><span id="netTitle">Spiking network</span><span id="stepLabel"></span></h2>
@@ -48,8 +53,11 @@
     <input id="scrub" type="range" min="0" value="0" aria-label="Frame">
     <span id="clock"></span>
   </div>
-  <footer><p id="note"></p><p id="explain"></p>
-    <p>Models: the best run of each arm in the reported studies (<code>models/</code> on branch <code>dev</code>); recorded with <code>python -m experiments.viz</code>. The earlier single-model page (model v3): <a href="v3-replay.html">v3 replay</a>.</p></footer>
+  <section class="paper">
+    <h2>Tl;dr</h2>
+    <p>Brains are modular and recurrent, but most spiking neural networks for reinforcement learning are stacked feed-forward layers. We introduce Community Recurrent SNNs (CoRe SNNs), recurrent networks split into communities with fixed roles, where the action is the community that an activity walk reaches. We also introduce Map-STDP, a local, reward-modulated learning rule that shapes these communities during training by compressing the network's own activity. On CartPole, learning the modular structure beats the same network without it, and swapping CoRe into a TD-STDP actor-critic improves CartPole and LunarLander while matching Acrobot, with more biologically plausible and potentially more energy-efficient circuits.</p>
+    <p><b>Abstract:</b> Biological neural circuits are both modular and recurrent, with dense communities sparsely linked to one another. Spiking neural networks (SNNs) for reinforcement learning are usually feed-forward, and it is unclear how to obtain functional modules in a recurrent SNN or what they buy. In this work, we introduce a class of spiking networks, called Community Recurrent SNNs (CoRe SNNs): recurrent networks partitioned into communities with fixed roles. A controller community receives the stimulus, each action has its own community, and latent communities carry internal state. Spiking activity is then a walk between communities, and the action is the community the walk reaches. All learning is local and three-factor, and the recurrent communities are closer to cortical microcircuits than a feed-forward actor. We compare three regimes for obtaining the communities: dynamic modularity, in which a new learning rule we introduce, Map-STDP, encourages modular structure during learning; partial modularity, in which a stochastic block model (SBM) initialization enforces it partly; and full modularity, in which sealing enforces it fully. On CartPole, across three spiking neuron models, Map-STDP improves learning over the same network without it (+65 to +87 mean return over training), matches full modularity (sealed communities) on two of the three models, and makes the observed spike walk more compressible. Replacing the feed-forward actor of a TD-STDP actor-critic with recurrent action communities improves on the feed-forward network on CartPole (+25 to +45) and LunarLander (+36 to +41 final return), and matches it on Acrobot. How strongly to enforce modularity depends on the task: full modularity helps most on Acrobot, while on LunarLander the dynamic, partial and full regimes perform alike. Overall, these recurrent modular networks can match or even improve upon feed-forward approaches, with improvements in bio-plausibility and energy efficiency.</p>
+  </section>
 </div>
 
 <script src="js/replay.js"></script>

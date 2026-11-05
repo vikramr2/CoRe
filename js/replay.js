@@ -130,7 +130,7 @@
       g.fillText('its TD error δ drives learning', X([xl]) - 8 * d, Y([0, yb]) + 46 * d); }
     // the ring's centre: how much recurrent drive crosses between action columns
     const t = D.family === 'race' ? (D.rec == null ? ['no recurrent synapses', '(feed-forward actor)']
-        : D.rec.cross === 0 ? ['recurrence within', 'columns only (sealed)']
+        : D.rec.cross === 0 ? ['recurrence within', 'columns only (full)']
         : ['recurrent drive', `${(100 * D.rec.cross).toFixed(1)}% between columns`])
       : D.rec == null ? null : D.rec.cross === 0 ? ['latents and actions:', 'output stays in module']
         : ['latent and action output', `${(100 * D.rec.cross).toFixed(1)}% to other modules`];
@@ -155,13 +155,16 @@
     const tasks = [...new Set(INDEX.map(m => m.task))];
     const order = ['CartPole', 'Acrobot', 'LunarLander']; tasks.sort((a, b) => order.indexOf(a) - order.indexOf(b));
     $('task').innerHTML = tasks.map(x => `<option>${x}</option>`).join('');
-    const [want, pin] = decodeURIComponent(location.hash.slice(1)).split('@');  // #<model id>[@<pinned neuron>]
+    const [hash, pin] = decodeURIComponent(location.hash.slice(1)).split('@');  // #<model id>[@<pinned neuron>]
+    const want = ALIAS[hash] || hash;
     const start = INDEX.find(m => m.id === want) || INDEX.find(m => m.id === pick(tasks[0]));
     $('task').value = start.task; fillModels(start.task); $('model').value = start.id;
     load(start.id, start.id === want && pin != null ? +pin : -1);
   }
-  const DEFAULT = { CartPole: 'v4-cartpole-flow-on', Acrobot: 'race-acrobot-nlif-cols_sealed_race_h2',
-                    LunarLander: 'race-lunarlander-nlif-cols_lam0_race_e' };  // flow shows the walk; the best TD-STDP arms
+  const DEFAULT = { CartPole: 'v4-cartpole-flow-dynamic', Acrobot: 'race-acrobot-nlif-cols_full_race_h2',
+                    LunarLander: 'race-lunarlander-nlif-cols_partial_race_e' };  // flow shows the walk; the best TD-STDP arms
+  // model ids before the regimes were renamed partial / dynamic / full (2026-11-05), so old #links still open
+  const ALIAS = {"v4-cartpole-branching-off": "v4-cartpole-branching-partial", "v4-cartpole-branching-on": "v4-cartpole-branching-dynamic", "v4-cartpole-branching-sealed": "v4-cartpole-branching-full", "v4-cartpole-flow-off": "v4-cartpole-flow-partial", "v4-cartpole-flow-on": "v4-cartpole-flow-dynamic", "v4-cartpole-flow-sealed": "v4-cartpole-flow-full", "v4-cartpole-lif-off": "v4-cartpole-lif-partial", "v4-cartpole-lif-on": "v4-cartpole-lif-dynamic", "v4-cartpole-lif-sealed": "v4-cartpole-lif-full", "v4-cartpole-qif-off": "v4-cartpole-qif-partial", "v4-cartpole-qif-on": "v4-cartpole-qif-dynamic", "v4-cartpole-qif-sealed": "v4-cartpole-qif-full", "race-acrobot-nlif-cols_lam0_race_h2": "race-acrobot-nlif-cols_partial_race_h2", "race-acrobot-nlif-cols_on_race_h2": "race-acrobot-nlif-cols_dynamic_race_h2", "race-acrobot-nlif-cols_sealed_race_h2": "race-acrobot-nlif-cols_full_race_h2", "race-cartpole-nlif-cols_lam0_race_rp": "race-cartpole-nlif-cols_partial_race_rp", "race-cartpole-nlif-cols_on_race_rp": "race-cartpole-nlif-cols_dynamic_race_rp", "race-cartpole-nlif-cols_sealed_race_rp": "race-cartpole-nlif-cols_full_race_rp", "race-lunarlander-nlif-cols_lam0_race_e": "race-lunarlander-nlif-cols_partial_race_e", "race-lunarlander-nlif-cols_on_race_e": "race-lunarlander-nlif-cols_dynamic_race_e", "race-lunarlander-nlif-cols_sealed_race_e": "race-lunarlander-nlif-cols_full_race_e"};
   const pick = task => (INDEX.find(m => m.id === DEFAULT[task]) || INDEX.find(m => m.task === task)).id;
   function fillModels(task) {
     const fams = { v4: 'Map-STDP model v4', race: 'TD-STDP backbone, race readout' };
@@ -190,21 +193,8 @@
   }
 
   function describe() {
-    const tr = D.train || {}, bits = [];
-    if (tr.last100 != null) bits.push(`training last-100 return ${(+tr.last100).toFixed(0)}`);
-    if (tr.frozen != null) bits.push(`frozen ${(+tr.frozen).toFixed(0)}`);
-    $('subtitle').textContent = `${D.label} · seed ${D.seed} · ${bits.join(', ')}${bits.length ? ' · ' : ''}this episode: return ${(+D.return).toFixed(1)}, ${F} frames`;
     $('netTitle').textContent = D.engine === 'flow' ? 'Flow: sampled walkers of the walk' : `Spiking network (${D.engine === 'nlif' ? 'noisy LIF' : D.engine === 'qif' ? 'QIF' : D.engine === 'lif' ? 'LIF' : 'branching'})`;
     $('envTitle').textContent = { CartPole: 'CartPole-v1', Acrobot: 'Acrobot-v1', LunarLander: 'LunarLander-v3' }[D.task] || D.task;
-    $('note').textContent = D.note || '';
-    const sh = D.shares || {};
-    const pct = x => x == null ? '–' : `${(100 * x).toFixed(0)}%`;
-    $('explain').textContent = (D.engine === 'flow'
-      ? `Each line is one walker's hop; a ring is a restart at the stimulus.`
-      : `Each spike gets one sampled cause: an earlier spike that drove it (a walk step, drawn as a line), the stimulus (ring), or background noise (no marker). Over this episode: ${pct(sh.walk)} walk steps, ${pct(sh.stim)} stimulus, ${pct(sh.none)} background.`)
-      + (D.family === 'race'
-        ? ` Blue lines: the all-to-all input synapses (every input neuron onto every critic and actor neuron; hover over an input to see its strongest). Grey lines: the strongest recurrent synapses among the actor's E neurons, within and between columns.`
-        : ` Grey lines: the strongest synapses, within and between modules (T_ij = W_ij / d_j).`) + ` Weights are frozen for the replay.`;
     const L = [];
     const seen = new Set();
     let inhAct = false;
