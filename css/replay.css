@@ -31,6 +31,9 @@ h1 b { font-weight: 700; }
 .authors { font-family: var(--serif); margin: 6px 0 0; font-size: 1.15rem; }
 .authors a, .paper a, .tagline a { color: var(--link); text-decoration: none; }
 html { scroll-behavior: smooth; }
+.tagline .gh { display: inline-flex; vertical-align: -0.12em; margin-left: 0.1em; color: var(--ink); }
+.tagline .gh svg { width: 1.05em; height: 1.05em; }
+.tagline .gh:hover, .tagline .gh:focus-visible { color: var(--link); }
 .authors a:hover, .authors a:focus-visible, .paper a:hover, .tagline a:hover, .tagline a:focus-visible { text-decoration: underline; }
 .paper { justify-self: center; width: 100%; max-width: 880px; font-family: var(--serif); line-height: 1.6; font-size: 1.12rem; color: var(--body); }
 .paper h2 { margin: 14px 0 4px; font-size: 1.3rem; font-weight: 700; color: var(--ink); }
