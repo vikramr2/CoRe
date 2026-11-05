@@ -40,6 +40,7 @@
   - `docs/columns-recipe.md`: regime names.
   - `README.md`: the repository is now CoRe (GitHub `vikramr2/CoRe`). The title, clone URL and walk-replay link (`vikramr2.github.io/CoRe/`; the old `/map-stdp/` returns 404) are updated, and the example model paths and flags use the new regime names. A new section, "Modularity regimes", sets the three regimes apart: a table of what each does to the cross-module synapses and the map term, with each one's flags in `models.basic` and `models.tdstdp`, then a line on each regime and the group naming. The concept figure (`assets/concept_figure.png`, the full-width version with the full model at the top right) now sits under the README's introduction. The local folder and the conda env keep `map-stdp`.
   - CLAUDE.md: the walk-replay link.
+  - Walk-replay page (branch `viz`, commit `d052fe5`, pushed): the title is now "CoRe: Community Recurrent SNNs" (serif), with a tagline, linked authors, and the Tl;dr and abstract below the replay. The per-model subtitle and the footer notes are removed. Model ids, data files and menu labels use partial / dynamic / full, and old `#<id>` links are mapped to the new ids. The page no longer scrolls sideways at phone width.
   - In `docs/derivation.md` and `docs/neuron-variants.md`, "sealed" describes how isolated a module is, not a regime name, so those files are unchanged.
 - **Behaviour.** Unchanged:
   - all 91 tests pass, and the golden tests are bit-identical;
