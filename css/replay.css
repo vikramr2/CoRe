@@ -44,8 +44,6 @@ html { scroll-behavior: smooth; }
 .pane h2 { margin: 0; font-size: 0.78rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); display: flex; justify-content: space-between; gap: 8px; }
 canvas { width: 100%; display: block; }
 #net { aspect-ratio: 16 / 11; }
-/* wide screens: cap the network's height so the Tl;dr heading and its first line show above the fold */
-@media (min-width: 861px) { #net { max-height: max(220px, calc(100svh - 540px)); } }
 #plant { aspect-ratio: 3 / 2; }
 .readout { display: grid; grid-template-columns: repeat(auto-fit, minmax(118px, 1fr)); gap: 6px 12px; font-family: var(--mono); font-size: 0.8rem; font-variant-numeric: tabular-nums; }
 .readout div { display: grid; gap: 1px; }
