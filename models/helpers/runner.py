@@ -95,8 +95,8 @@ class Config:
     pair_ms: int = 20  # pair-count window (ms)
     n_lat_mod: int = 2  # rec 'lat': latent modules of n_ae posts each (input->latent W frozen at init)
     la_beta: float = 0.3  # rec 'lat': latent-output barrier (core.latent_output_barrier)
-    rec_seal: bool = False  # enforced modularity: R without cross-module synapses (same draws; iteration 015)
-    p_cross: float = 0.05  # R's cross-module connection probability (within: 0.5); 0 = rec_seal (iteration 018)
+    rec_full: bool = False  # full modularity: R without cross-module synapses (same draws; iteration 015)
+    p_cross: float = 0.05  # R's cross-module connection probability (within: 0.5); 0 = rec_full (iteration 018)
     # iteration 016: tasks without the authors' configs
     onehot: bool = False  # ck_encoder: one-hot of a Discrete observation (n states), repeated in_rep times
     r_ck_hz: float = 0.0  # calibrate_low: k = r_ck_hz / rate_target (0 = BindsNET's rate measured on this task)
@@ -191,7 +191,7 @@ def tokens(cfg):
         t += ["sch"] if cfg.credit == "hazard" else ["scn"] if cfg.credit == "noise" else []
     if cfg.rec != "none":
         d = Config()
-        t += [cfg.rec, f"xr{cfg.chi_rec:g}"] + (["seal"] if cfg.rec_seal else [])
+        t += [cfg.rec, f"xr{cfg.chi_rec:g}"] + (["full"] if cfg.rec_full else [])
         t += [f"px{cfg.p_cross:g}"] if cfg.p_cross != d.p_cross else []
         t += ["lam0"] if cfg.lam == 0 else [f"lam{cfg.lam:g}"] if cfg.lam != 1 else []
         t += [f"lr{cfg.lam_ratio:g}"] if cfg.lam_ratio != d.lam_ratio else []
@@ -499,7 +499,7 @@ class CKRunner:
         if cfg.rec != "none":
             self.hr = td.HybridRec(lay, K, cfg.n_ae, cfg.n_lat_mod if n_lat else 0, cfg.chi_rec, self.lp, H,
                                    (*rs, 2), cfg.stat_windows, cfg.pair_ms, cfg.lam * cfg.lam_rec,
-                                   cfg.la_beta if n_lat else 0.0, p_cross=cfg.p_cross, seal=cfg.rec_seal)
+                                   cfg.la_beta if n_lat else 0.0, p_cross=cfg.p_cross, full=cfg.rec_full)
             self.hs = np.zeros((H, self.hr.Kr))  # module scores of the window's credit
             self.snaps = {0: self.hr.R.copy()}
             self.snaps_kc = {}  # per snapshot: HybridRec.class_table() of the pairs since the previous snapshot

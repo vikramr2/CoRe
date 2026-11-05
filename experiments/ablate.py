@@ -23,7 +23,7 @@ Family 'ck' (race-study models, models.tdstdp.load_ck_model; HybridRec kicks b =
 posts, modules = action columns): the lesions keep the intact d (the cut drive is lost, not rerouted):
   intact            the saved model;
   rec_off           every recurrent kick removed (b = 0);
-  cross_lesion      the kicks between columns removed (a no-op on sealed columns: a built-in check);
+  cross_lesion      the kicks between columns removed (a no-op on full-modularity columns: a built-in check);
   within_lesion     the kicks within columns removed;
   rec_untrained     the recurrence at its initial, untrained weights (R_ep0, its own d): the recurrent drive kept, what
                     the recurrence learned removed (a control for rec_off, which also removes drive).
@@ -214,7 +214,7 @@ def run_ck(model, n, seed):
     cfg = json.loads(str(z["config"]))
     cols = "R" in z.files
     out = dict(family="ck", task=cfg["task"], seed=cfg["seed"], readout=cfg["readout"], rec=cfg["rec"],
-               rec_seal=cfg["rec_seal"], conditions={})
+               rec_full=cfg.get("rec_full", cfg.get("rec_seal")), conditions={})
     for cond in CONDITIONS["ck"] if cols else ("intact",):
         r = tdstdp.load_ck_model(model, rng_seed=(seed, ABL_SEED))
         b = ck_kicks(r.hr, cond, z["R_ep0"] if cols else None)

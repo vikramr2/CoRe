@@ -95,24 +95,30 @@ STUDIES = {
 }
 
 
+_V4_RENAMED = {"on": "dynamic", "off": "partial", "sealed": "full"}  # old -> new arm names (2026-11-05)
+
+
 def _emergent_v4():
-    """emergent-v4 (iteration 014, CartPole only after the second pilot, §10): engine x map term on (lam 0.05) / off
-    (lam 0) / sealed (lam 0 on a network built without cross-module synapses, --p-cross 0), v4 flags, rule emergent.
+    """emergent-v4 (iteration 014, CartPole only after the second pilot, §10): engine x modularity regime: dynamic (map
+    term on, lam 0.05) / partial (map term off, lam 0) / full (lam 0 on a network built without cross-module synapses,
+    --p-cross 0), v4 flags, rule emergent. Groups renamed 2026-11-05 from on / off / sealed (_V4_RENAMED).
     Spiking engines: 8 heads, diffbound readout (BOUND_CAL[8]), step sizes matched to flow; LIF caps beta at 1.6
     (pilot: v4's 16 put 36-61% of LIF frames on the deadline, beyond its calibration range, BOUND_CAL_LIF)."""
     v4 = ["--rule", "emergent", "--td-norm", "0.04", "--p-cc", "0", "--beta-kappa", "0.01", "--eta", "5"]
     sp = ["--heads", "8", "--readout", "diffbound", "--match-scales"]
     eng = {"flow": ["--beta-max", "16"], "branching": ["--beta-max", "16", *sp], "qif": ["--beta-max", "16", *sp],
            "lif": ["--beta-max", "1.6", *sp]}
-    arms = {"on": ["--lam", "0.05"], "off": ["--lam", "0"], "sealed": ["--lam", "0", "--p-cross", "0"]}
+    arms = {"dynamic": ["--lam", "0.05"], "partial": ["--lam", "0"], "full": ["--lam", "0", "--p-cross", "0"]}
     groups, pairs = {}, []
     for e, f in eng.items():
         for arm, a in arms.items():
             groups[f"CartPole_{e}_{arm}"] = dict(task="CartPole", engine=e, seeds=range(2000, 2020),
                                                  flags=[*v4, *f, *a, "--episodes", "1500"])
-        pairs += [(f"CartPole_{e}_on", f"CartPole_{e}_off"), (f"CartPole_{e}_on", f"CartPole_{e}_sealed", "sealed")]
-    return dict(title="Emergent-walk Map-STDP on v4, CartPole: map term on vs off vs sealed, four engines",
-                runner="m3", groups=groups, pairs=pairs, reference={}, gates={})
+        pairs += [(f"CartPole_{e}_dynamic", f"CartPole_{e}_partial"),
+                  (f"CartPole_{e}_dynamic", f"CartPole_{e}_full", "full")]
+    return dict(title="Emergent-walk Map-STDP on v4, CartPole: dynamic vs partial vs full modularity, four engines",
+                runner="m3", groups=groups, pairs=pairs, reference={}, gates={},
+                renamed={f"CartPole_{e}_{a}": f"CartPole_{e}_{b}" for e in eng for a, b in _V4_RENAMED.items()})
 
 
 STUDIES["emergent-v4"] = _emergent_v4()
@@ -197,6 +203,15 @@ _HC3_COMMON = ["--rate-target", "40", "--block", "20", "--fast", "--rate-match-r
 _HC3_ARMS = {"cols_lam0": ["--chi-rec", "0.3", "--rec", "cols", "--lam", "0"],
              "cols_on": ["--chi-rec", "0.3", "--rec", "cols", "--lam", "1"],
              "cols_sealed": ["--chi-rec", "0.3", "--rec", "cols", "--rec-seal", "--lam", "0"]}
+# The race studies' column regimes under their 2026-11-05 names (partial = map term off, dynamic = map term on, full =
+# no cross-column synapses), with the old group names; the hybrid-columns studies keep the old names (their records).
+_RACE_ARMS = {"cols_partial": _HC3_ARMS["cols_lam0"], "cols_dynamic": _HC3_ARMS["cols_on"],
+              "cols_full": ["--chi-rec", "0.3", "--rec", "cols", "--rec-full", "--lam", "0"]}
+_RACE_RENAMED = {"cols_lam0": "cols_partial", "cols_on": "cols_dynamic", "cols_sealed": "cols_full"}
+
+
+def _race_renamed(t, sfx):
+    return {f"{t}_{a}_{sfx}": f"{t}_{b}_{sfx}" for a, b in _RACE_RENAMED.items()}
 
 
 def _hybrid_columns_3_ck():
@@ -247,14 +262,16 @@ def _race_cartpole():
     common = ["--rate-target", "40", "--block", "20", "--fast", "--rate-match-rec"]
     race = ["--readout", "race", "--race-reprobe", "50"]
     arms = {"base_ck": ["--ent-match-rec"], "base_nl": ["--ent-match-rec", "--norm-logits"], "base_race_rp": race,
-            **{f"{a}_race_rp": [*race, *f] for a, f in _HC3_ARMS.items()}}
+            **{f"{a}_race_rp": [*race, *f] for a, f in _RACE_ARMS.items()}}
     groups = {f"{t}_{a}": dict(task=t, engine="nlif", seeds=seeds, flags=[*common, *f]) for a, f in arms.items()}
-    pairs = [(f"{t}_{a}_race_rp", f"{t}_base_ck") for a in ("base", *_HC3_ARMS)]
+    pairs = [(f"{t}_{a}_race_rp", f"{t}_base_ck") for a in ("base", *_RACE_ARMS)]
     pairs += [(f"{t}_base_nl", f"{t}_base_ck", "readout")]
     pairs += [(f"{t}_{a}_race_rp", f"{t}_{b}_race_rp", "secondary") for a, b in
-              (("cols_sealed", "base"), ("cols_lam0", "base"), ("cols_sealed", "cols_lam0"), ("cols_on", "cols_lam0"))]
+              (("cols_full", "base"), ("cols_partial", "base"), ("cols_full", "cols_partial"),
+               ("cols_dynamic", "cols_partial"))]
     return dict(title="The race readout on CartPole against the published backbone, best dev-seed settings",
-                groups=groups, pairs=pairs, reference={t: f"{t}_base_ck"}, gates={})
+                groups=groups, pairs=pairs, reference={t: f"{t}_base_ck"}, gates={},
+                renamed=_race_renamed(t, "race_rp"))
 
 
 STUDIES["race-cartpole"] = _race_cartpole()
@@ -271,13 +288,15 @@ def _race_acrobot():
     common = ["--rate-target", "40", "--block", "20", "--fast", "--rate-match-rec", "--eta-cal", "--beta-c", "-1.5"]
     race = ["--readout", "race", "--rate-cost", "5e-4", "--rate-floor", "0.5", "--race-theta", "16", "--freeze", "40"]
     arms = {"base_ck": ["--ent-match-rec"], "base_race_h2": race,
-            **{f"{a}_race_h2": [*race, *f] for a, f in _HC3_ARMS.items()}}
+            **{f"{a}_race_h2": [*race, *f] for a, f in _RACE_ARMS.items()}}
     groups = {f"{t}_{a}": dict(task=t, engine="nlif", seeds=seeds, flags=[*common, *f]) for a, f in arms.items()}
-    pairs = [(f"{t}_{a}_race_h2", f"{t}_base_ck") for a in ("base", *_HC3_ARMS)]
+    pairs = [(f"{t}_{a}_race_h2", f"{t}_base_ck") for a in ("base", *_RACE_ARMS)]
     pairs += [(f"{t}_{a}_race_h2", f"{t}_{b}_race_h2", "secondary") for a, b in
-              (("cols_sealed", "base"), ("cols_on", "base"), ("cols_sealed", "cols_lam0"), ("cols_on", "cols_lam0"))]
+              (("cols_full", "base"), ("cols_dynamic", "base"), ("cols_full", "cols_partial"),
+               ("cols_dynamic", "cols_partial"))]
     return dict(title="The race readout with the decision hold on Acrobot against the published backbone",
-                groups=groups, pairs=pairs, reference={t: f"{t}_base_ck"}, gates={})
+                groups=groups, pairs=pairs, reference={t: f"{t}_base_ck"}, gates={},
+                renamed=_race_renamed(t, "race_h2"))
 
 
 STUDIES["race-acrobot"] = _race_acrobot()
@@ -294,13 +313,15 @@ def _race_lunarlander():
     common = ["--rate-target", "40", "--block", "20", "--fast", "--rate-match-rec", "--eta-cal"]
     race = ["--readout", "race", "--rate-cost", "5e-4", "--rate-floor", "0.5", "--race-theta", "26"]
     arms = {"base_ck": ["--ent-match-rec"], "base_race_e": race,
-            **{f"{a}_race_e": [*race, *f] for a, f in _HC3_ARMS.items()}}
+            **{f"{a}_race_e": [*race, *f] for a, f in _RACE_ARMS.items()}}
     groups = {f"{t}_{a}": dict(task=t, engine="nlif", seeds=seeds, flags=[*common, *f]) for a, f in arms.items()}
-    pairs = [(f"{t}_{a}_race_e", f"{t}_base_ck") for a in ("base", *_HC3_ARMS)]
+    pairs = [(f"{t}_{a}_race_e", f"{t}_base_ck") for a in ("base", *_RACE_ARMS)]
     pairs += [(f"{t}_{a}_race_e", f"{t}_{b}_race_e", "secondary") for a, b in
-              (("cols_sealed", "base"), ("cols_on", "base"), ("cols_sealed", "cols_lam0"), ("cols_on", "cols_lam0"))]
+              (("cols_full", "base"), ("cols_dynamic", "base"), ("cols_full", "cols_partial"),
+               ("cols_dynamic", "cols_partial"))]
     return dict(title="The race readout at the backbone's control rate on LunarLander against the published backbone",
-                groups=groups, pairs=pairs, reference={t: f"{t}_base_ck"}, gates={})
+                groups=groups, pairs=pairs, reference={t: f"{t}_base_ck"}, gates={},
+                renamed=_race_renamed(t, "race_e"))
 
 
 STUDIES["race-lunarlander"] = _race_lunarlander()
@@ -310,17 +331,20 @@ def _latent_ablation():
     """latent-ablation (iteration 017; user decision 2026-10-31: v4 only, TD-STDP latents need their own iteration):
     emergent-v4's 240 CartPole models with plasticity off, each under every condition of experiments.ablate family v4
     (latent lesion, one module's lesion, removal, latent path only). Contrasts: the change under lesion_L and
-    remove_L compared between arms (map term off vs on, sealed vs on) per engine."""
+    remove_L compared between arms (partial vs dynamic, full vs dynamic) per engine. Groups renamed 2026-11-05 with
+    emergent-v4's (on / off / sealed -> dynamic / partial / full)."""
     groups, contrasts = {}, []
     for e in ("flow", "branching", "qif", "lif"):
-        for arm in ("on", "off", "sealed"):
+        for arm in _V4_RENAMED.values():
             g = f"CartPole_{e}_{arm}"
             groups[f"v4_{g}"] = dict(task="CartPole", engine=e, family="v4", seeds=range(2000, 2020), flags=[],
                                      models=f"reports/emergent-v4/models/{g}")
-        contrasts += [(f"v4_CartPole_{e}_{x}", f"v4_CartPole_{e}_on", c, "v4-arm")
-                      for x in ("off", "sealed") for c in ("lesion_L", "remove_L")]
+        contrasts += [(f"v4_CartPole_{e}_{x}", f"v4_CartPole_{e}_dynamic", c, "v4-arm")
+                      for x in ("partial", "full") for c in ("lesion_L", "remove_L")]
     return dict(title="Ablations of the final v4 models: what the latents carry", runner="ablate", groups=groups,
-                contrasts=contrasts, reference={}, gates={})
+                contrasts=contrasts, reference={}, gates={},
+                renamed={f"v4_CartPole_{e}_{a}": f"v4_CartPole_{e}_{b}" for e in ("flow", "branching", "qif", "lif")
+                         for a, b in _V4_RENAMED.items()})
 
 
 STUDIES["latent-ablation"] = _latent_ablation()
@@ -329,12 +353,12 @@ XSWEEP_GRID = (0, 0.0125, 0.025, 0.05, 0.1, 0.2, 0.5)
 
 
 def _cross_sweep():
-    """cross-sweep (iteration 018): the race study's implicit columns (map term off) at seven levels of R's
-    cross-module connection probability, --p-cross 0 (= sealed) to 0.5 (= within, no modular structure), on each task's
+    """cross-sweep (iteration 018): the race study's partial columns (map term off) at seven levels of R's
+    cross-module connection probability, --p-cross 0 (= full) to 0.5 (= within, no modular structure), on each task's
     race-study flags. Dev seeds 20-29, n = 10: the runs are the pre-registered dev stage (pilot018, worktree
     cross-sweep at e1c27bc), copied into runs/ unchanged by user decision (2026-11-02) instead of a fresh-seed rerun;
-    the README states this. Reference: sealed (px0); pairs each point vs sealed and vs implicit (px0.05), Holm per
-    task and family."""
+    the README states this. Reference: full (px0); pairs each point vs full and vs partial (px0.05), Holm per
+    task and family. The family "<task>-partial" was "<task>-implicit" until 2026-11-05."""
     common = ["--rate-target", "40", "--block", "20", "--fast", "--rate-match-rec"]
     race = {"CartPole": ["--readout", "race", "--race-reprobe", "50"],
             "Acrobot": ["--eta-cal", "--beta-c", "-1.5", "--readout", "race", "--rate-cost", "5e-4", "--rate-floor",
@@ -348,8 +372,8 @@ def _cross_sweep():
             groups[f"{t}_px{p:g}"] = dict(task=t, engine="nlif", seeds=range(20, 30),
                                           flags=[*common, *f, *cols, "--p-cross", str(p)])
         pairs += [(f"{t}_px{p:g}", f"{t}_px0", t) for p in XSWEEP_GRID[1:]]
-        pairs += [(f"{t}_px{p:g}", f"{t}_px0.05", f"{t}-implicit") for p in XSWEEP_GRID if p != 0.05]
-    return dict(title="Cross-column wiring of the race columns, sealed to unstructured (dev seeds)", groups=groups,
+        pairs += [(f"{t}_px{p:g}", f"{t}_px0.05", f"{t}-partial") for p in XSWEEP_GRID if p != 0.05]
+    return dict(title="Cross-column wiring of the race columns, full to unstructured (dev seeds)", groups=groups,
                 pairs=pairs, reference={t: f"{t}_px0" for t in race}, gates={})
 
 
@@ -573,8 +597,18 @@ def summarize(study, root=REPORTS, studies=None):
         md += ["## Dropped groups", "",
                "Declared and run, then dropped after the run; their files stay in `runs/`.", ""]
         md += [f"- `{k}`: {why}." for k, why in dropped.items()] + [""]
-    (d / "summary.md").write_text("\n".join(md))
+    (d / "summary.md").write_text("\n".join(md + renamed_md(s)))
     return rows
+
+
+def renamed_md(s):
+    """The summary.md section of a study whose groups were renamed (directories, manifest and models moved)."""
+    if not s.get("renamed"):
+        return []
+    return ["## Renamed groups", "", "Groups renamed 2026-11-05 (modularity regimes: partial = map term off, "
+            "dynamic = map term on, full = no cross-module synapses); `runs/`, `models/` and the manifest were moved "
+            "with them, the run files are unchanged.", ""] + [f"- `{v}` was `{k}`" for k, v in s["renamed"].items()] + [
+        ""]
 
 
 def m3_stats(task, rs):
@@ -711,7 +745,7 @@ def summarize_m3(study, s, d):
             md.append(f"| `{r['on']}` | `{r['off']}` | {r['family']} | {r['n_on']}/{r['n_off']} | "
                       + " | ".join(cell(r, k) for k in M3_PAIR_METRICS) + " |")
         md.append("")
-    (d / "summary.md").write_text("\n".join(md))
+    (d / "summary.md").write_text("\n".join(md + renamed_md(s)))
     return rows
 
 
@@ -827,7 +861,7 @@ def summarize_ablate(study, s, d):
                       f"{c['delta_median']:+.1f} | {c['against_delta_median']:+.1f} | "
                       f"{c['hl']:+.1f} [{c['hl_lo']:+.1f}, {c['hl_hi']:+.1f}] | {c['p']:.2g} | {c['p_holm']:.2g} |")
         md.append("")
-    (d / "summary.md").write_text("\n".join(md))
+    (d / "summary.md").write_text("\n".join(md + renamed_md(s)))
     return rows, cons
 
 

@@ -257,7 +257,7 @@ def test_lif_kernels_agree():
     assert 3 < rates["np"] < 20 and all(abs(rates[k] / rates["np"] - 1) < 0.03 for k in ("nb", "nbf")), rates
 
 
-def test_p_cross_zero_seals_modules():
+def test_p_cross_zero_gives_full_modularity():
     """--p-cross 0: no cross-module synapse outside the routing pairs; every other synapse as in the default build."""
     a, b = basic.Agent(basic.Config(p_cc=0.0, p_cross=0.0)), basic.Agent(basic.Config(p_cc=0.0))
     t = a.roles[a.m]

@@ -110,7 +110,7 @@ def heat(ax, M, labels, cmap, vmin, vmax, title, fmt):
 
 
 def figures(final, pairs, out):
-    """structure_<on>.png per pair: mean final module weight table, map term on and off, and on - off."""
+    """structure_<on>.png per pair: mean final module weight table of each group of the pair, and on - off."""
     import matplotlib
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
@@ -125,8 +125,8 @@ def figures(final, pairs, out):
         top, dmax = max(A.max(), B.max()), max(np.abs(A - B).max(), 1e-12)
         fig, axs = plt.subplots(1, 3, figsize=(12, 4.2), facecolor=SURFACE)
         pct = lambda x: f"{100 * x:.1f}"  # noqa: E731
-        heat(axs[0], A, labels, seq, 0, top, f"Map term on ({on}, n = {len(final[on])})\n% of total weight", pct)
-        heat(axs[1], B, labels, seq, 0, top, f"Map term off ({off}, n = {len(final[off])})\n% of total weight", pct)
+        heat(axs[0], A, labels, seq, 0, top, f"{on} (n = {len(final[on])})\n% of total weight", pct)
+        heat(axs[1], B, labels, seq, 0, top, f"{off} (n = {len(final[off])})\n% of total weight", pct)
         heat(axs[2], A - B, labels, div, -dmax, dmax, "On − off, percentage points\nred: more weight with the map term",
              lambda x: f"{100 * x:+.1f}")
         fig.tight_layout()

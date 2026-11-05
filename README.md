@@ -1,19 +1,43 @@
-# Map-STDP
+# CoRe
 
-Spiking networks whose communities serve as their states. Map-STDP is a three-factor plasticity rule that learns a
-task by TD-modulated STDP, while a cost-modulated term makes a given partition into modules (controller, actions,
-latents) the minimum-description-length partition of the network's walk. This repository holds the library, the
-experiments on CartPole, Acrobot and LunarLander, and the final studies with their trained models.
+Community Recurrent spiking networks (CoRe-SNN): spiking networks whose communities serve as their states. Map-STDP
+is a three-factor plasticity rule that learns a task by TD-modulated STDP, while a cost-modulated term makes a given
+partition into modules (controller, actions, latents) the minimum-description-length partition of the network's walk.
+This repository holds the library, the experiments on CartPole, Acrobot and LunarLander, and the final studies with
+their trained models.
+
+![Feed-forward vs community-recurrent networks, the three modularity regimes, and the full model](assets/concept_figure.png)
 
 - `docs/derivation.md`: the model and its derivation. `docs/model.md`: the implemented model and its parameters.
 - `reports/<study>/`: the final studies (pre-registration `README.md`, raw runs and `summary.md`).
 - `models/`: the best trained model per arm of the reported studies (`models/README.md`).
-- [Walk replay](https://vikramr2.github.io/map-stdp/): one episode of every best model, spike by spike, with each spike's sampled cause (static pages on branch `viz`; the recorder `experiments/viz.py` is in history at `648818e`).
+- [Walk replay](https://vikramr2.github.io/CoRe/): one episode of every best model, spike by spike, with each spike's sampled cause (static pages on branch `viz`; the recorder `experiments/viz.py` is in history at `648818e`).
+
+## Modularity regimes
+
+The studies compare the same network in three regimes, which differ in how its communities are kept apart:
+
+| Regime | Cross-module synapses (outside routing) | Map term | Map-STDP v4 (`models.basic`) | TD-STDP backbone (`models.tdstdp`) |
+| --- | --- | --- | --- | --- |
+| **Partial** | present, shaped by the task term only | off | `--lam 0` | `--rec cols --lam 0` |
+| **Dynamic** | present, weakened by the map term as the network learns | on | `--lam 0.05` | `--rec cols --lam 1` |
+| **Full** | none: modules are built without them | off | `--lam 0 --p-cross 0` | `--rec cols --rec-full --lam 0` |
+
+- **Partial**: the communities exist only through the wiring probabilities (dense within modules, sparse across).
+  Nothing but the task keeps them apart.
+- **Dynamic**: the map term (cost-modulated STDP) learns the modular structure, making the given partition the
+  minimum-description-length one of the network's walk.
+- **Full**: the structure the map term converges to, imposed from the start (same random draws, cross-module
+  synapses masked out).
+
+Study groups and model directories name the regime: `CartPole_<engine>_<regime>` in `emergent-v4` (e.g.
+`CartPole_lif_dynamic`), `<Task>_cols_<regime>_<race variant>` in the race studies (e.g. `CartPole_cols_full_race_rp`;
+the `base_*` groups have no recurrent columns).
 
 ## Setup
 
 ```bash
-git clone https://github.com/vikramr2/map-stdp.git && cd map-stdp
+git clone https://github.com/vikramr2/CoRe.git && cd CoRe
 git submodule update --init                   # docs/superneuro (reference only)
 conda env create -f environment.yml           # Python 3.11, numpy, scipy, numba, gymnasium, box2d, superneuromat
 conda activate map-stdp
@@ -35,16 +59,16 @@ Plasticity is off in both cases.
 return of each episode and their mean:
 
 ```bash
-python models/evaluate.py models/race-cartpole/CartPole_cols_sealed_race_rp/s7005.npz --episodes 20 --seed 1
-python models/evaluate.py models/race-lunarlander/LunarLander_cols_lam0_race_e/s7219.npz --episodes 20
+python models/evaluate.py models/race-cartpole/CartPole_cols_full_race_rp/s7005.npz --episodes 20 --seed 1
+python models/evaluate.py models/race-lunarlander/LunarLander_cols_partial_race_e/s7219.npz --episodes 20
 ```
 
 **Map-STDP, model v4** (`models/emergent-v4`, CartPole). The run's training record supplies the final readout gain.
 The script plays the model intact and with its latent modules ablated, and writes the returns to `--out`:
 
 ```bash
-python -m experiments.ablate --family v4 --model models/emergent-v4/CartPole_lif_on/s2017.npz \
-    --run reports/emergent-v4/runs/CartPole_lif_on/s2017.json --episodes 20 --out out.json
+python -m experiments.ablate --family v4 --model models/emergent-v4/CartPole_lif_dynamic/s2017.npz \
+    --run reports/emergent-v4/runs/CartPole_lif_dynamic/s2017.json --episodes 20 --out out.json
 ```
 
 The policies are stochastic, so returns vary with the evaluation seed. The full set of models (every seed) is not in
@@ -56,8 +80,8 @@ Add `--save-model PATH.npz` to save the final weights. Results go to `experiment
 
 **Map-STDP, model v4, on CartPole** (the `emergent-v4` arms). The engines are flow (`--backend flow`) and the
 spiking engines branching, QIF and LIF (`--backend spiking --engine numpy | qif | lif --heads 8 --readout diffbound
---match-scales`). `--beta-max` is 16, except 1.6 for LIF. Use `--lam 0.05` for the map term on, `--lam 0` for off, and
-`--lam 0 --p-cross 0` for sealed modules:
+--match-scales`). `--beta-max` is 16, except 1.6 for LIF. Both commands below train the dynamic regime; swap
+`--lam 0.05` for another regime's flags from [Modularity regimes](#modularity-regimes):
 
 ```bash
 python -m models.basic --task CartPole --seed 0 --backend flow --rule emergent --td-norm 0.04 --p-cc 0 \
@@ -70,12 +94,12 @@ python -m models.basic --task CartPole --seed 0 --backend spiking --engine lif -
 **TD-STDP backbone (Chung & Kozma 2020) with recurrent action columns and the race readout:**
 
 ```bash
-# CartPole: the published backbone, then sealed columns with the race readout
+# CartPole: the published backbone (no columns), then the full regime with the race readout
 python -m models.tdstdp --task CartPole --seed 0 --engine nlif --rate-target 40 --block 20 --fast \
     --rate-match-rec --ent-match-rec --save-model ck.npz
 python -m models.tdstdp --task CartPole --seed 0 --engine nlif --rate-target 40 --block 20 --fast \
-    --rate-match-rec --readout race --race-reprobe 50 --chi-rec 0.3 --rec cols --rec-seal --lam 0 --save-model race.npz
-# LunarLander: implicit columns with the race readout (10000 episodes; hours per run)
+    --rate-match-rec --readout race --race-reprobe 50 --chi-rec 0.3 --rec cols --rec-full --lam 0 --save-model race.npz
+# LunarLander: the partial regime with the race readout (10000 episodes; hours per run)
 python -m models.tdstdp --task LunarLander --seed 0 --engine nlif --rate-target 40 --block 20 --fast \
     --rate-match-rec --eta-cal --readout race --rate-cost 5e-4 --rate-floor 0.5 --race-theta 26 --chi-rec 0.3 \
     --rec cols --lam 0 --save-model ll.npz

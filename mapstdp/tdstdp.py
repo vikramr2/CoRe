@@ -255,7 +255,7 @@ class HybridRec:
            "lat_out", "lat_floor", "repeat", "repeat_chance")
 
     def __init__(self, lay, K, n_ae, n_lat_mod, chi_rec, p, H, seed, stat_windows=5, pair_ms=20, lam=0.0, la_beta=0.0,
-                 obs_tau=20.0, eps_h=5.0, wmin=1e-3, p_same=0.5, p_cross=0.05, seal=False):
+                 obs_tau=20.0, eps_h=5.0, wmin=1e-3, p_same=0.5, p_cross=0.05, full=False):
         nc = lay.n_crit
         ae = nc + np.flatnonzero(lay.ae)
         self.ridx = np.r_[ae, nc + np.flatnonzero(lay.lat)]
@@ -267,7 +267,7 @@ class HybridRec:
         P = np.where(self.m[:, None] == self.m[None, :], p_same, p_cross)
         self.mask = rng.random(P.shape) < P
         np.fill_diagonal(self.mask, False)
-        if seal:  # enforced modularity: the same draws without the cross-module synapses
+        if full:  # full modularity: the same draws without the cross-module synapses
             self.mask &= self.m[:, None] == self.m[None, :]
         assert self.mask.any(0).all(), "neuron without outgoing synapse"
         R = self.mask * rng.uniform(0.5, 1.5, P.shape)
@@ -377,7 +377,7 @@ class HybridRec:
     def class_table(self):
         """The stimulus-conditioned walk since the last call, per class (executed action), at the module level [post
         module, pre module]: the raw pair table as a share of the class's pairs (chance-dominated: with two columns at
-        equal rates half the coincidences cross columns even when sealed) and the counter's table (the causal
+        equal rates half the coincidences cross columns even with full modularity) and the counter's table (the causal
         transitions, Eq. 8's signed counter: kicks x offspring x spikes, what the structural rule sees) as a share of
         the class's counter mass, with both totals; zeros for an empty class. Resets self.kc and self.cc. Returns
         dict(share, n, cshare, cn)."""

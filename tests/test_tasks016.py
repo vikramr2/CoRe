@@ -987,7 +987,7 @@ def test_save_and_load_ck_model(tmp_path):
     """--save-model writes the final W, the calibrated config, the race beta and (with rec) R; load_ck_model rebuilds a
     frozen runner that holds them and runs the policy (returns appended) without any plasticity."""
     cfg = ex.preset("CartPole", seed=0, engine="nlif", s_in=0.1, rate_target=40.0, block=20, fast=True, readout="race",
-                    race_beta=6.0, rec="cols", chi_rec=0.3, lam=0.0, rec_seal=True, eta_rec=0.1, lam_rec=0.0)
+                    race_beta=6.0, rec="cols", chi_rec=0.3, lam=0.0, rec_full=True, eta_rec=0.1, lam_rec=0.0)
     r = ex.CKRunner(cfg)
     for _ in range(30):
         r.tick()
