@@ -6,12 +6,14 @@ partition into modules (controller, actions, latents) the minimum-description-le
 This repository holds the library, the experiments on CartPole, Acrobot and LunarLander, and the final studies with
 their trained models.
 
+For a full visualization, check out the [Webpage](https://vikramr2.github.io/CoRe/): holding one episode of every best model, spike by spike, with each spike's sampled cause.
+
 ![Feed-forward vs community-recurrent networks, the three modularity regimes, and the full model](assets/concept_figure.png)
 
 - `docs/derivation.md`: the model and its derivation. `docs/model.md`: the implemented model and its parameters.
 - `reports/<study>/`: the final studies (pre-registration `README.md`, raw runs and `summary.md`).
 - `models/`: the best trained model per arm of the reported studies (`models/README.md`).
-- [Walk replay](https://vikramr2.github.io/CoRe/): one episode of every best model, spike by spike, with each spike's sampled cause (static pages on branch `viz`; the recorder `experiments/viz.py` is in history at `648818e`).
+
 
 ## Modularity regimes
 
